@@ -1,0 +1,6 @@
+meshtastic==2.5.8
+pubsub==0.1.2
+Pypubsub==4.0.3
+pyserial==3.5
+PyYAML==6.0.2
+redis==5.2.1
