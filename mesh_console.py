@@ -58,39 +58,6 @@ def initialize_broadcast_node():
 
     print(f"[{timestamp}] Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
 
-async def update_stored_messages_with_node_name(node_id, node_name):
-    """
-    Update messages in Redis to replace station_id with the corresponding node name,
-    but only if the node_name for the node_id has changed.
-    """
-    # Get the current node name in Redis
-    current_name = redis_client.hget(REDIS_NODES_KEY, node_id)
-
-    # Exit early if the node name has not changed
-    if current_name == node_name:
-        logging.debug(f"No change for node {node_id}: {node_name}. Update skipped.")
-        return
-
-    # Update messages if the node name has changed
-    logging.info(f"Updating messages for node {node_id}: {current_name} -> {node_name}")
-    messages = redis_client.lrange(REDIS_MESSAGES_KEY, 0, -1)
-    for i, message in enumerate(messages):
-        try:
-            message_dict = json.loads(message)  # Parse JSON string
-            if message_dict["station_id"] == node_id:
-                # Update the station_id to the new node name
-                message_dict["station_id"] = node_name
-
-                # Enqueue the updated message for Redis update
-                await redis_update_queue.put({
-                    "type": "update_message",
-                    "index": i,  # Index of the message in the Redis list
-                    "updated_message": json.dumps(message_dict)
-                })
-                logging.debug(f"Enqueued updated message: {message_dict}")
-        except json.JSONDecodeError:
-            logging.warning(f"Skipping malformed message: {message}")
-
 def format_timestamp():
     """
     Get the current timestamp in a readable format.
