@@ -84,5 +84,5 @@ redis-cli HDEL meshtastic:nodes:timestamps <field>
 Contributions are welcome! Please submit issues or pull requests on the GitHub repository.
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the GPL-3 License.
 
