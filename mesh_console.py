@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import asyncio
 from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
@@ -27,21 +28,45 @@ import json
 REDIS_MESSAGES_KEY = "meshtastic:messages"
 REDIS_NODES_KEY = "meshtastic:nodes"
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,  # Adjust this to logging.DEBUG to see detailed logs
-    format="%(asctime)s %(levelname)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),  # Log to console
-        logging.FileHandler("meshtastic.log", mode="a")  # Log to a file
-    ]
-)
-
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
 
 # Initialize Redis connection
 redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+def parse_arguments():
+    """
+    Parse command-line arguments for interface device and logging level.
+    """
+    parser = argparse.ArgumentParser(description="Meshtastic Console")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="/dev/ttyACM0",
+        help="Serial interface device (default: /dev/ttyACM0)"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="INFO",
+        help="Set logging level (default: INFO)"
+    )
+    return parser.parse_args()
+
+def configure_logging(log_level):
+    """
+    Configure logging based on the provided log level.
+    """
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format="%(asctime)s %(levelname)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler("meshtastic.log", mode="a")
+        ]
+    )
+
 
 async def initialize_broadcast_node():
     """
@@ -90,7 +115,7 @@ async def process_node_update(update):
         async with redis_client.pipeline() as pipe:
             # Update name and timestamp if changed
             if current_name != new_name:
-                logging.info(f"Updating node {node_id}: {current_name} -> {new_name}")
+                logging.debug(f"Updating node {node_id}: {current_name} -> {new_name}")
                 pipe.hset(REDIS_NODES_KEY, node_id, new_name)
                 pipe.hset(f"{REDIS_NODES_KEY}:timestamps", node_id, timestamp)
 
@@ -275,8 +300,8 @@ def on_node_message(packet, interface):
             "timestamp": timestamp
         })
 
-        # Log the node announcement without Redis lookup
-        print(f"[{timestamp}] Node {node_id}: {node_name}")
+        # Log the node announcement at DEBUG level
+        logging.debug(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
     except Exception as e:
         logging.error(f"Error processing node message: {e}")
 
@@ -313,8 +338,11 @@ async def main():
     """
     Main function to set up the Meshtastic listener for text and node messages.
     """
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-    logging.getLogger("meshtastic").setLevel(logging.WARNING)  # Suppress non-essential logs
+
+    # Parse arguments and configure logging
+    args = parse_arguments()
+    configure_logging(args.log_level)
+    logging.getLogger("meshtastic").setLevel(logging.WARNING)  #  non-essential logs
 
     print("Listening for messages... Press Ctrl+C to exit.")
 
