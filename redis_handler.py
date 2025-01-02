@@ -16,7 +16,6 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import redis.asyncio as redis
-import json
 from datetime import datetime
 from logger import get_logger
 
@@ -54,21 +53,40 @@ class RedisHandler:
         """
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    async def save_message(self, station_id, to_id, text_message, timestamp):
+    async def save_message(self, redis_key, message):
         """
-        Save a message to Redis.
+        Save a pre-constructed message to Redis.
         """
         try:
-            message = json.dumps({
-                "timestamp": timestamp,
-                "station_id": station_id,
-                "to_id": to_id,
-                "message": text_message
-            })
-            await self.client.lpush(REDIS_MESSAGES_KEY, message)
-            logger.info(f"Saved message: {message}")
+            await self.client.lpush(redis_key, message)
+            logger.info(f"Saved message to {redis_key}: {message}")
         except Exception as e:
-            logger.error(f"Failed to save message: {e}", exc_info=True)
+            logger.error(f"Failed to save message to {redis_key}: {e}", exc_info=True)
+
+    async def load_messages(self, redis_key):
+        """
+        Load all messages from a Redis list.
+        """
+        try:
+            messages = await self.client.lrange(redis_key, 0, -1)
+            logger.info(f"Loaded {len(messages)} messages from {redis_key}.")
+            return messages
+        except Exception as e:
+            logger.error(f"Failed to load messages from {redis_key}: {e}", exc_info=True)
+            return []
+
+    async def load_nodes(self):
+        """
+        Load all nodes and their timestamps from Redis.
+        """
+        try:
+            nodes = await self.client.hgetall(REDIS_NODES_KEY)
+            timestamps = await self.client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
+            logger.info(f"Loaded {len(nodes)} nodes from Redis.")
+            return nodes, timestamps
+        except Exception as e:
+            logger.error(f"Failed to load nodes: {e}", exc_info=True)
+            return {}, {}
 
     async def update_node(self, node_id, node_name, timestamp, battery_level=None, position=None):
         """
@@ -89,49 +107,36 @@ class RedisHandler:
         except Exception as e:
             logger.error(f"Failed to update node {node_id}: {e}", exc_info=True)
 
-    async def resolve_node_name(self, node_id):
+    async def initialize_connected_node(self, interface):
         """
-        Resolve a node ID to its name stored in Redis.
+        Initialize the Redis node lookup with the station ID and name of the connected node.
         """
         try:
-            name = await self.client.hget(REDIS_NODES_KEY, node_id) or node_id
-            logger.debug(f"Resolved node name: {node_id} -> {name}")
-            return name
-        except Exception as e:
-            logger.error(f"Failed to resolve node name for {node_id}: {e}", exc_info=True)
-            return node_id
+            node_info = interface.getMyNodeInfo()
+            node_id_decimal = node_info.get("num", None)
+            if node_id_decimal is None:
+                logger.error("Node ID (num) not found in node info.")
+                return
 
-    async def load_nodes(self):
-        """
-        Load all nodes and their timestamps from Redis.
-        """
-        try:
-            nodes = await self.client.hgetall(REDIS_NODES_KEY)
-            timestamps = await self.client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
-            logger.info(f"Loaded {len(nodes)} nodes from Redis.")
-            return nodes, timestamps
-        except Exception as e:
-            logger.error(f"Failed to load nodes: {e}", exc_info=True)
-            return {}, {}
+            # Convert the numeric node ID to hexadecimal with Meshtastic format (!hex)
+            node_id_hex = f"!{node_id_decimal:08x}"
+            user = node_info.get("user", {})
+            node_name = user.get("longName", user.get("shortName", node_id_hex))
+            timestamp = self.format_timestamp()
 
-    async def load_messages(self):
-        """
-        Load all messages from Redis.
-        """
-        try:
-            messages = await self.client.lrange(REDIS_MESSAGES_KEY, 0, -1)
-            logger.info(f"Loaded {len(messages)} messages from Redis.")
-            return messages
+            # Save the connected node details and timestamp in Redis
+            await self.client.hset(REDIS_NODES_KEY, node_id_hex, node_name)
+            await self.client.hset(f"{REDIS_NODES_KEY}:timestamps", node_id_hex, timestamp)
+            logger.info(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
         except Exception as e:
-            logger.error(f"Failed to load messages: {e}", exc_info=True)
-            return []
+            logger.error(f"Failed to initialize connected node: {e}", exc_info=True)
 
     async def update_stored_messages(self, node_id, new_name):
         """
         Update stored messages with a new node name if the node ID has changed.
         """
         try:
-            messages = await self.load_messages()
+            messages = await self.load_messages(REDIS_MESSAGES_KEY)
             for i, message in enumerate(messages):
                 try:
                     message_dict = json.loads(message)
@@ -143,4 +148,42 @@ class RedisHandler:
                     logger.warning(f"Skipping malformed message at index {i}: {message}")
         except Exception as e:
             logger.error(f"Failed to update stored messages for node {node_id}: {e}", exc_info=True)
+
+
+    async def process_update(self, update):
+        """
+        Process an update from the queue and perform the appropriate Redis operation.
+        """
+        try:
+            if update["type"] == "message":
+                # Save new message
+                message = json.dumps({
+                    "timestamp": update["timestamp"],
+                    "station_id": update["station_id"],
+                    "to_id": update["to_id"],
+                    "message": update["text_message"]
+                })
+                await self.save_message(REDIS_MESSAGES_KEY, message)
+                logger.info(f"Saved message: {message}")
+
+            elif update["type"] == "node":
+                # Update node information
+                await self.update_node(
+                    node_id=update["node_id"],
+                    node_name=update["node_name"],
+                    timestamp=update["timestamp"],
+                    battery_level=update.get("battery_level"),
+                    position=update.get("position")
+                )
+                logger.info(f"Updated node: {update['node_id']} -> {update['node_name']}")
+
+            elif update["type"] == "update_message":
+                # Update an existing message by index
+                index = update["index"]
+                updated_message = update["updated_message"]
+                await self.client.lset(REDIS_MESSAGES_KEY, index, updated_message)
+                logger.info(f"Updated message at index {index}: {updated_message}")
+
+        except Exception as e:
+            logger.error(f"Error processing update: {e}", exc_info=True)
 

@@ -19,22 +19,17 @@ import argparse
 import asyncio
 from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
-import redis.asyncio as redis  # Use asynchronous Redis
 import json
 import serial.tools.list_ports  # Required for listing available ports
 from logger import configure_logging, get_logger
 from datetime import datetime
-
-
-# Redis keys for storing messages and nodes
-REDIS_MESSAGES_KEY = "meshtastic:messages"
-REDIS_NODES_KEY = "meshtastic:nodes"
+from redis_handler import RedisHandler
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
 
 # Initialize Redis connection
-redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+redis_handler = RedisHandler()
 
 def parse_arguments():
     """
@@ -66,88 +61,24 @@ args = parse_arguments()
 configure_logging(args.log_level)  # Global logger configured here
 logger = get_logger(__name__)
 
-async def initialize_broadcast_node():
-    """
-    Initialize the Redis node lookup with a broadcast node and timestamp.
-    """
-    broadcast_id = "^all"
-    broadcast_name = broadcast_id # use the same name.
-    timestamp = format_timestamp()
-
-    # Save broadcast node details and timestamp in Redis
-    await redis_client.hset(REDIS_NODES_KEY, broadcast_id, broadcast_name)
-    await redis_client.hset(f"{REDIS_NODES_KEY}:timestamps", broadcast_id, timestamp)
-
-    logger.info(f"[{timestamp}] Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
-
-def format_timestamp():
-    """
-    Get the current timestamp in a readable format.
-    """
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 async def process_node_update(update):
     """
     Asynchronous function to process node updates in Redis.
     """
-    node_id = update["node_id"]
-    new_name = update["node_name"]
-    timestamp = update["timestamp"]
-
-    # Extract additional fields
-    battery_level = update.get("battery_level", "")  # Default to empty string
-    position = update.get("position", {})
-    latitude = position.get("latitude", "")
-    longitude = position.get("longitude", "")
-    altitude = position.get("altitude", "")
-
     try:
-        # Fetch current data from Redis
-        current_name = await redis_client.hget(REDIS_NODES_KEY, node_id)
-        current_battery = await redis_client.hget(f"{REDIS_NODES_KEY}:metrics", f"{node_id}:battery")
-        current_latitude = await redis_client.hget(f"{REDIS_NODES_KEY}:position", f"{node_id}:latitude")
-        current_longitude = await redis_client.hget(f"{REDIS_NODES_KEY}:position", f"{node_id}:longitude")
-        current_altitude = await redis_client.hget(f"{REDIS_NODES_KEY}:position", f"{node_id}:altitude")
+        # Delegate node update to RedisHandler
+        await redis_handler.update_node(
+            node_id=update["node_id"],
+            node_name=update["node_name"],
+            timestamp=update["timestamp"],
+            battery_level=update.get("battery_level"),
+            position=update.get("position")
+        )
 
-        # Use Redis pipelines to batch updates
-        async with redis_client.pipeline() as pipe:
-            # Update name and timestamp if changed
-            if current_name != new_name:
-                logger.debug(f"Updating node {node_id}: {current_name} -> {new_name}")
-                pipe.hset(REDIS_NODES_KEY, node_id, new_name)
-                pipe.hset(f"{REDIS_NODES_KEY}:timestamps", node_id, timestamp)
-
-            # Update battery level if changed
-            if current_battery != battery_level:
-                pipe.hset(f"{REDIS_NODES_KEY}:metrics", f"{node_id}:battery", battery_level)
-
-            # Update position fields if changed
-            if current_latitude != latitude:
-                 pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:latitude", latitude)
-            if current_longitude != longitude:
-                pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:longitude", longitude)
-            if current_altitude != altitude:
-                pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:altitude", altitude)
-
-            # Execute all updates in the pipeline
-            await pipe.execute()
-
-        # Update stored messages with the new node name if it has changed
-        if current_name != new_name:
-            messages = await redis_client.lrange(REDIS_MESSAGES_KEY, 0, -1)
-            for i, message in enumerate(messages):
-                try:
-                    message_dict = json.loads(message)  # Parse JSON string
-                    if message_dict["station_id"] == node_id:
-                        # Update the station_id to the new node name
-                        message_dict["station_id"] = new_name
-                        await redis_client.lset(REDIS_MESSAGES_KEY, i, json.dumps(message_dict))
-                        logger.debug(f"Updated message: {message_dict}")
-                except json.JSONDecodeError:
-                    logger.warning(f"Skipping malformed message: {message}")
-
+        # Delegate stored message updates to RedisHandler
+        await redis_handler.update_stored_messages(update["node_id"], update["node_name"])
     except Exception as e:
-        logger.error(f"Node update for {node_id}: {e}")
+        logger.error(f"Error processing node update: {e}", exc_info=True)
 
 async def redis_writer():
     """
@@ -156,42 +87,13 @@ async def redis_writer():
     while True:
         update = await redis_update_queue.get()  # Wait for an update
         try:
-            if update["type"] == "message":
-                # Resolve names for station_id and to_id
-                station_id = update["station_id"]
-                to_id = update["to_id"]
-
-                sender_name = await redis_client.hget(REDIS_NODES_KEY, station_id) or station_id
-                recipient_name = await redis_client.hget(REDIS_NODES_KEY, to_id) or to_id
-
-                # Save message to Redis with resolved names
-                message = json.dumps({
-                    "timestamp": update["timestamp"],
-                    "station_id": sender_name,  # Use resolved name
-                    "to_id": recipient_name,  # Use resolved name
-                    "message": update["text_message"]
-                })
-                await redis_client.lpush(REDIS_MESSAGES_KEY, message)
-
-                # Print message with resolved names
-                logger.info(f"[{update['timestamp']}] {sender_name} -> {recipient_name}: {update['text_message']}")
-
-            elif update["type"] == "node":
-                # Process node updates
-                await process_node_update(update)
-                # Log node update with timestamp
-                logger.info(f"[{update['timestamp']}] node update: Node ID {update['node_id']}, Name {update['node_name']}")
-
-
-            elif update["type"] == "update_message":
-                # Update an existing message in Redis
-                await redis_client.lset(REDIS_MESSAGES_KEY, update["index"], update["updated_message"])
-                logger.info(f"Updated message at index {update['index']}: {update['updated_message']}")
-                
+            # Delegate update processing to RedisHandler
+            await redis_handler.process_update(update)
         except Exception as e:
-            logger.error(f"Error writing to Redis: {e}")
+            logger.error(f"Error writing to Redis: {e}", exc_info=True)
         finally:
             redis_update_queue.task_done()  # Mark the task as done
+
 
 async def load_previous_data():
     """
@@ -395,7 +297,7 @@ async def main():
     logger.info("Listening for messages... Press Ctrl+C to exit.")
 
     # Initialize broadcast node
-    await initialize_broadcast_node()
+    await redis_handler.initialize_broadcast_node()
 
     # Load and display previous data
     await load_previous_data()
