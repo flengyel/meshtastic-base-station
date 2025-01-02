@@ -19,11 +19,11 @@ import argparse
 import asyncio
 from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
-import logging
-from datetime import datetime
 import redis.asyncio as redis  # Use asynchronous Redis
 import json
 import serial.tools.list_ports  # Required for listing available ports
+from logger import configure_logging, get_logger
+from datetime import datetime
 
 
 # Redis keys for storing messages and nodes
@@ -50,7 +50,7 @@ def parse_arguments():
     parser.add_argument(
         "--log-level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "PACKET"],
         default="INFO",
         help="Set logging level (default: INFO)"
     )
@@ -61,42 +61,24 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-def configure_logging(log_level):
-    """
-    Configure logging with different formats for console and file handlers.
-    """
-    # Formatter with timestamp for file logs
-    formatter_with_timestamp = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
-    # Formatter without timestamp for console logs
-    formatter_without_timestamp = logging.Formatter("%(levelname)s: %(message)s")
-
-    # Console handler (no timestamps)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(getattr(logging, log_level))
-    console_handler.setFormatter(formatter_without_timestamp)
-
-    # File handler (with timestamps)
-    file_handler = logging.FileHandler("meshtastic.log", mode="a")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter_with_timestamp)
-
-    # Apply handlers to the root logger
-    logging.basicConfig(level=getattr(logging, log_level), handlers=[console_handler, file_handler])
-
+# Parse arguments and configure logging
+args = parse_arguments()
+configure_logging(args.log_level)  # Global logger configured here
+logger = get_logger(__name__)
 
 async def initialize_broadcast_node():
     """
     Initialize the Redis node lookup with a broadcast node and timestamp.
     """
     broadcast_id = "^all"
-    broadcast_name = "Broadcast"
+    broadcast_name = broadcast_id # use the same name.
     timestamp = format_timestamp()
 
     # Save broadcast node details and timestamp in Redis
     await redis_client.hset(REDIS_NODES_KEY, broadcast_id, broadcast_name)
     await redis_client.hset(f"{REDIS_NODES_KEY}:timestamps", broadcast_id, timestamp)
 
-    logging.info(f"[{timestamp}] Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
+    logger.info(f"[{timestamp}] Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
 
 def format_timestamp():
     """
@@ -131,7 +113,7 @@ async def process_node_update(update):
         async with redis_client.pipeline() as pipe:
             # Update name and timestamp if changed
             if current_name != new_name:
-                logging.debug(f"Updating node {node_id}: {current_name} -> {new_name}")
+                logger.debug(f"Updating node {node_id}: {current_name} -> {new_name}")
                 pipe.hset(REDIS_NODES_KEY, node_id, new_name)
                 pipe.hset(f"{REDIS_NODES_KEY}:timestamps", node_id, timestamp)
 
@@ -160,12 +142,12 @@ async def process_node_update(update):
                         # Update the station_id to the new node name
                         message_dict["station_id"] = new_name
                         await redis_client.lset(REDIS_MESSAGES_KEY, i, json.dumps(message_dict))
-                        logging.debug(f"Updated message: {message_dict}")
+                        logger.debug(f"Updated message: {message_dict}")
                 except json.JSONDecodeError:
-                    logging.warning(f"Skipping malformed message: {message}")
+                    logger.warning(f"Skipping malformed message: {message}")
 
     except Exception as e:
-        logging.error(f"Error processing node update for {node_id}: {e}")
+        logger.error(f"Node update for {node_id}: {e}")
 
 async def redis_writer():
     """
@@ -192,22 +174,22 @@ async def redis_writer():
                 await redis_client.lpush(REDIS_MESSAGES_KEY, message)
 
                 # Print message with resolved names
-                logging.info(f"[{update['timestamp']}] {sender_name} -> {recipient_name}: {update['text_message']}")
+                logger.info(f"[{update['timestamp']}] {sender_name} -> {recipient_name}: {update['text_message']}")
 
             elif update["type"] == "node":
                 # Process node updates
                 await process_node_update(update)
                 # Log node update with timestamp
-                logging.info(f"[{update['timestamp']}] Processed node update: Node ID {update['node_id']}, Name {update['node_name']}")
+                logger.info(f"[{update['timestamp']}] node update: Node ID {update['node_id']}, Name {update['node_name']}")
 
 
             elif update["type"] == "update_message":
                 # Update an existing message in Redis
                 await redis_client.lset(REDIS_MESSAGES_KEY, update["index"], update["updated_message"])
-                logging.info(f"Updated message at index {update['index']}: {update['updated_message']}")
+                logger.info(f"Updated message at index {update['index']}: {update['updated_message']}")
                 
         except Exception as e:
-            logging.error(f"Error writing to Redis: {e}")
+            logger.error(f"Error writing to Redis: {e}")
         finally:
             redis_update_queue.task_done()  # Mark the task as done
 
@@ -215,28 +197,28 @@ async def load_previous_data():
     """
     Load and display previous messages and nodes from Redis asynchronously.
     """
-    logging.info("--- Previously Saved Nodes ---")
+    logger.info("--- Previously Saved Nodes ---")
 
     # Fetch nodes and their timestamps
     nodes = await redis_client.hgetall(REDIS_NODES_KEY)
     timestamps = await redis_client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
 
     if not nodes:
-        logging.info("[No nodes found in Redis]")
+        logger.info("[No nodes found in Redis]")
     else:
         sorted_nodes = sorted(
             nodes.items(), key=lambda x: timestamps.get(x[0], "[No timestamp]")
         )
         for node_id, node_name in sorted_nodes:
             timestamp = timestamps.get(node_id, "[No timestamp]")
-            logging.info(f"[{timestamp}] Node {node_id}: {node_name}")
+            logger.info(f"[{timestamp}] Node {node_id}: {node_name}")
 
-    logging.info("--- Previously Saved Messages ---")
+    logger.info("--- Previously Saved Messages ---")
 
     # Fetch messages
     messages = await redis_client.lrange(REDIS_MESSAGES_KEY, 0, -1)
     if not messages:
-        logging.info("[No messages found in Redis]")
+        logger.info("[No messages found in Redis]")
     else:
         parsed_messages = []
         for msg in messages:
@@ -256,13 +238,13 @@ async def load_previous_data():
                     "message": message["message"]
                 })
             except json.JSONDecodeError:
-                logging.warning(f"Skipping malformed message: {msg}")
+                logger.warning(f"Skipping malformed message: {msg}")
 
         # Sort messages by their timestamp and log them
         sorted_messages = sorted(parsed_messages, key=lambda m: m["timestamp"])
         for message in sorted_messages:
             # Include the event's timestamp in the log message
-            logging.info(f"[{message['timestamp']}] {message['sender_name']} -> {message['recipient_name']}: {message['message']}")
+            logger.info(f"[{message['timestamp']}] {message['sender_name']} -> {message['recipient_name']}: {message['message']}")
 
 
 async def cancellable_task():
@@ -273,12 +255,21 @@ async def cancellable_task():
         while True:
             await asyncio.sleep(0.01) # Small delay to avoid CPU hogging
     except asyncio.CancelledError:
-        logging.info("Exiting...")
+        logger.info("Exiting...")
+
+def on_telemetry_message(packet, interface):
+    """
+    Callback to enqueue telemetry messages for Redis updates
+    """
+    # for now, only log packets
+    logger.packet(f"on_telemetry_message: {packet}")
 
 def on_text_message(packet, interface):
     """
-    Callback to process received text messages and enqueue them for Redis updates.
+    Callback to enqueue text messages for Redis updates.
     """
+
+    logger.packet(f"on_text_message: {packet}")
     try:
         station_id = packet.get("fromId", "[Unknown ID]")
         to_id = packet.get("toId", "^all")
@@ -286,7 +277,7 @@ def on_text_message(packet, interface):
         timestamp = format_timestamp()
 
         # DEBUG log for raw message details
-        logging.debug(f"Raw msg received: fromId={station_id}, toId={to_id}, text='{text_message}', timestamp={timestamp}")
+        logger.debug(f"Raw msg received: fromId={station_id}, toId={to_id}, text='{text_message}', timestamp={timestamp}")
 
         # Enqueue the message for Redis update
         redis_update_queue.put_nowait({
@@ -297,13 +288,17 @@ def on_text_message(packet, interface):
             "timestamp": timestamp
         })
     except Exception as e:
-        logging.error(f"Error processing text message: {e}", exc_info=True)
+        logger.error(f"text message: {e}", exc_info=True)
 
 
 def on_node_message(packet, interface):
     """
     Callback to process received node messages and enqueue them for Redis updates.
     """
+
+    # if logger packets, do that first
+    logger.packet(f"on_node_message: {packet}")
+
     try:
         node_id = packet.get("fromId", "[Unknown ID]")
         node_info = packet.get("decoded", {}).get("user", {})
@@ -323,9 +318,9 @@ def on_node_message(packet, interface):
         })
 
         # Log the node announcement at DEBUG level
-        logging.debug(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
+        logger.debug(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
     except Exception as e:
-        logging.error(f"Error processing node message: {e}")
+        logger.error(f"node message: {e}")
 
 
 async def initialize_connected_node(interface):
@@ -337,7 +332,7 @@ async def initialize_connected_node(interface):
         node_info = interface.getMyNodeInfo()
         node_id_decimal = node_info.get("num", None)
         if node_id_decimal is None:
-            logging.error("Node ID (num) not found in node info.")
+            logger.error("Node ID (num) not found in node info.")
             return
 
         # Convert the numeric node ID to hexadecimal with Meshtastic format (!hex)
@@ -350,38 +345,33 @@ async def initialize_connected_node(interface):
         await redis_client.hset(REDIS_NODES_KEY, node_id_hex, node_name)
         await redis_client.hset(f"{REDIS_NODES_KEY}:timestamps", node_id_hex, timestamp)
 
-        logging.info(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
+        logger.info(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
     except Exception as e:
-        logging.error(f"Failed to initialize connected node: {e}", exc_info=True)
+        logger.error(f"Failed to initialize connected node: {e}", exc_info=True)
 
 def suggest_available_ports():
     """
     Suggest available serial ports to the user.
     """
     try:
-        logging.info("Available ports:")
+        logger.info("Available ports:")
         ports = list(serial.tools.list_ports.comports())
         if ports:
             for port in ports:
-                logging.info(f"  - {port.device}")
+                logger.info(f"  - {port.device}")
         else:
-            logging.info("  No serial ports detected.")
+            logger.info("  No serial ports detected.")
     except Exception as e:
-        logging.error(f"Failed to list available ports: {e}")
+        logger.error(f"Cannot list available ports: {e}")
 
 async def main():
     """
     Main function to set up the Meshtastic listener for text and node messages.
     """
 
-    # Parse arguments and configure logging
-    args = parse_arguments()
-    configure_logging(args.log_level)
-    logging.getLogger("meshtastic").setLevel(logging.WARNING)  #  non-essential logs
-
     # Display Redis data and exit if the flag is set
     if args.display_redis:
-        logging.info("Displaying Redis data...")
+        logger.info("Displaying Redis data ...")
         await load_previous_data()
         return  # Exit the program gracefully
 
@@ -392,17 +382,17 @@ async def main():
         # Attempt to initialize the serial interface
         # The serial library logs the connection attempt at DEBUG level
         interface = SerialInterface(device_path)
-        logging.debug(f"Connected to serial device: {device_path}")
+        logger.debug(f"Connected to serial device: {device_path}")
     except FileNotFoundError:
-        logging.error(f"Cannot connect to serial device {device_path}: Device not found.")
+        logger.error(f"Cannot connect to serial device {device_path}: Device not found.")
         suggest_available_ports()
         return  # Exit the program gracefully
     except Exception as e:
-        logging.error(f"Cannot connect to serial device {device_path}: {e}")
+        logger.error(f"Cannot connect to serial device {device_path}: {e}")
         suggest_available_ports()
         return  # Exit the program gracefully
 
-    logging.info("Listening for messages... Press Ctrl+C to exit.")
+    logger.info("Listening for messages... Press Ctrl+C to exit.")
 
     # Initialize broadcast node
     await initialize_broadcast_node()
@@ -415,8 +405,9 @@ async def main():
     # Subscribe to message topics using pubsub
     pub.subscribe(on_text_message, "meshtastic.receive.text")
     pub.subscribe(on_node_message, "meshtastic.receive.user")
+    pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
 
-    logging.info("Subscribed to text and user message handlers.")
+    logger.info("Subscribed to text, telementry, and user messages.")
 
     tasks = [
         asyncio.create_task(cancellable_task()),
@@ -431,11 +422,11 @@ async def main():
         await asyncio.gather(*tasks, return_exceptions=True)
     finally:
         interface.close()
-        logging.info("Interface closed.")
+        logger.info("Interface closed.")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Program terminated.")
+        logger.info("Program terminated.")
 
