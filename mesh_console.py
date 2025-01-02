@@ -94,59 +94,81 @@ async def redis_writer():
         finally:
             redis_update_queue.task_done()  # Mark the task as done
 
-
-async def load_previous_data():
+async def load_nodes():
     """
-    Load and display previous messages and nodes from Redis asynchronously.
+    Load and display previously saved nodes.
     """
     logger.info("--- Previously Saved Nodes ---")
 
-    # Fetch nodes and their timestamps
-    nodes = await redis_client.hgetall(REDIS_NODES_KEY)
-    timestamps = await redis_client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
+    # Fetch nodes and timestamps from RedisHandler
+    nodes, timestamps = await redis_handler.load_nodes()
 
     if not nodes:
-        logger.info("[No nodes found in Redis]")
+        logger.info("[No nodes found]")
     else:
-        sorted_nodes = sorted(
-            nodes.items(), key=lambda x: timestamps.get(x[0], "[No timestamp]")
-        )
-        for node_id, node_name in sorted_nodes:
-            timestamp = timestamps.get(node_id, "[No timestamp]")
-            logger.info(f"[{timestamp}] Node {node_id}: {node_name}")
+        parsed_nodes = []
+        for node_id, node_name in nodes.items():
+            # Retrieve corresponding timestamp
+            timestamp = timestamps.get(node_id)
+            if not timestamp:
+                logger.warning(f"Skipped node with missing timestamp: Node {node_id} -> {node_name}")
+                continue  # Skip nodes without a timestamp
 
+            parsed_nodes.append({
+                "timestamp": timestamp,
+                "node_id": node_id,
+                "node_name": node_name
+            })
+
+        # Sort nodes by timestamp
+        sorted_nodes = sorted(parsed_nodes, key=lambda n: n["timestamp"])
+
+        # Log sorted nodes
+        for node in sorted_nodes:
+            logger.info(f"[{node['timestamp']}] Node {node['node_id']}: {node['node_name']}")
+
+
+async def load_messages():
+    """
+    Load and display previously saved messages.
+    """
     logger.info("--- Previously Saved Messages ---")
 
-    # Fetch messages
-    messages = await redis_client.lrange(REDIS_MESSAGES_KEY, 0, -1)
+    # Fetch messages from RedisHandler
+    messages = await redis_handler.load_messages()
+
     if not messages:
-        logger.info("[No messages found in Redis]")
+        logger.info("[No messages found]")
     else:
         parsed_messages = []
         for msg in messages:
             try:
                 message = json.loads(msg)
-                station_id = message["station_id"]
-                to_id = message.get("to_id", "^all")
 
-                # Resolve names for sender and recipient
-                sender_name = nodes.get(station_id, station_id)
-                recipient_name = nodes.get(to_id, to_id)
+                # Ensure timestamp exists
+                timestamp = message.get("timestamp")
+                if not timestamp:
+                    logger.warning(f"Skipped message with missing timestamp: {msg}")
+                    continue  # Skip messages without a timestamp
 
+                # Collect parsed messages for sorting
                 parsed_messages.append({
-                    "timestamp": message["timestamp"],
-                    "sender_name": sender_name,
-                    "recipient_name": recipient_name,
+                    "timestamp": timestamp,
+                    "station_id": message["station_id"],
+                    "to_id": message.get("to_id", "Unknown"),
                     "message": message["message"]
                 })
             except json.JSONDecodeError:
-                logger.warning(f"Skipping malformed message: {msg}")
+                logger.warning(f"Skipped malformed message: {msg}")
 
-        # Sort messages by their timestamp and log them
+        # Sort parsed messages by timestamp
         sorted_messages = sorted(parsed_messages, key=lambda m: m["timestamp"])
+
+        # Log sorted messages
         for message in sorted_messages:
-            # Include the event's timestamp in the log message
-            logger.info(f"[{message['timestamp']}] {message['sender_name']} -> {message['recipient_name']}: {message['message']}")
+            logger.info(
+                f"[{message['timestamp']}] {message['station_id']} -> {message['to_id']}: {message['message']}"
+            )
 
 
 async def cancellable_task():
@@ -170,16 +192,34 @@ def on_text_message(packet, interface):
     """
     Callback to enqueue text messages for Redis updates.
     """
-
     logger.packet(f"on_text_message: {packet}")
     try:
-        station_id = packet.get("fromId", "[Unknown ID]")
-        to_id = packet.get("toId", "^all")
-        text_message = packet.get("decoded", {}).get("text", "[No text]")
-        timestamp = format_timestamp()
+        # Extract the station ID (fromId)
+        station_id = packet.get("fromId")
+        if station_id is None:
+            logger.warning(f"Text message is missing the station ID (fromId): {packet}")
+            return  # Exit as we cannot process a message without a station ID
+
+        # Extract the recipient ID (toId)
+        to_id = packet.get("toId")
+        if to_id is None:
+            logger.warning(f"Text message is missing the recipient ID (toId): {packet}")
+            to_id = "?"  # Use "?" for unknown recipient ID
+
+        # Extract the text message
+        text_message = packet.get("decoded", {}).get("text", "")
+
+        # Warn if the text message is empty
+        if not text_message:
+            logger.warning(f"Text message contains no text: {packet}")
+
+        # Get the current timestamp
+        timestamp = redis_handler.format_timestamp()
 
         # DEBUG log for raw message details
-        logger.debug(f"Raw msg received: fromId={station_id}, toId={to_id}, text='{text_message}', timestamp={timestamp}")
+        logger.debug(
+            f"Raw msg received: fromId={station_id}, toId={to_id}, text='{text_message}', timestamp={timestamp}"
+        )
 
         # Enqueue the message for Redis update
         redis_update_queue.put_nowait({
@@ -190,26 +230,38 @@ def on_text_message(packet, interface):
             "timestamp": timestamp
         })
     except Exception as e:
-        logger.error(f"text message: {e}", exc_info=True)
-
+        logger.error(f"Error processing text message: {e}", exc_info=True)
 
 def on_node_message(packet, interface):
     """
     Callback to process received node messages and enqueue them for Redis updates.
     """
 
-    # if logger packets, do that first
+    # Log the packet first if required
     logger.packet(f"on_node_message: {packet}")
 
     try:
-        node_id = packet.get("fromId", "[Unknown ID]")
+        # Extract the node ID (fromId)
+        node_id = packet.get("fromId")
+        if node_id is None:
+            logger.warning(f"Node message is missing the station ID (fromId): {packet}")
+            return  # Exit early as we cannot process a node without a node_id
+
+        # Extract node information
         node_info = packet.get("decoded", {}).get("user", {})
         long_name = node_info.get("longName", "")
         short_name = node_info.get("shortName", "")
-        timestamp = format_timestamp()
 
         # Determine the node name
-        node_name = long_name or short_name or node_id
+        node_name = long_name or short_name or None
+
+        # Check for missing node name and log a warning if necessary
+        if not node_name:
+            logger.warning(f"Node message has no identifiable name (longName, shortName): {packet}")
+            return  # Exit as we cannot process a node without a name
+
+        # Get the current timestamp
+        timestamp = redis_handler.format_timestamp()
 
         # Enqueue the node update for Redis
         redis_update_queue.put_nowait({
@@ -221,9 +273,9 @@ def on_node_message(packet, interface):
 
         # Log the node announcement at DEBUG level
         logger.debug(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
-    except Exception as e:
-        logger.error(f"node message: {e}")
 
+    except Exception as e:
+        logger.error(f"Error processing node message: {e}", exc_info=True)
 
 async def initialize_connected_node(interface):
     """
@@ -241,11 +293,14 @@ async def initialize_connected_node(interface):
         node_id_hex = f"!{node_id_decimal:08x}"
         user = node_info.get("user", {})
         node_name = user.get("longName", user.get("shortName", node_id_hex))
-        timestamp = format_timestamp()
+        timestamp = redis_handler.format_timestamp()
 
-        # Save the connected node details and timestamp in Redis
-        await redis_client.hset(REDIS_NODES_KEY, node_id_hex, node_name)
-        await redis_client.hset(f"{REDIS_NODES_KEY}:timestamps", node_id_hex, timestamp)
+        # Use redis_handler to save the connected node details
+        await redis_handler.update_node(
+            node_id=node_id_hex,
+            node_name=node_name,
+            timestamp=timestamp
+        )
 
         logger.info(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
     except Exception as e:
@@ -274,7 +329,8 @@ async def main():
     # Display Redis data and exit if the flag is set
     if args.display_redis:
         logger.info("Displaying Redis data ...")
-        await load_previous_data()
+        await load_nodes()
+        await load_messages()
         return  # Exit the program gracefully
 
     # Initialize device path
@@ -300,7 +356,8 @@ async def main():
     await redis_handler.initialize_broadcast_node()
 
     # Load and display previous data
-    await load_previous_data()
+    await load_nodes()
+    await load_messages()
 
     await initialize_connected_node(interface)
 

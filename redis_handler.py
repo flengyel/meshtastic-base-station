@@ -63,17 +63,18 @@ class RedisHandler:
         except Exception as e:
             logger.error(f"Failed to save message to {redis_key}: {e}", exc_info=True)
 
-    async def load_messages(self, redis_key):
+    async def load_messages(self):
         """
-        Load all messages from a Redis list.
+        Load all messages from the Redis list.
         """
         try:
-            messages = await self.client.lrange(redis_key, 0, -1)
-            logger.info(f"Loaded {len(messages)} messages from {redis_key}.")
+            messages = await self.client.lrange(REDIS_MESSAGES_KEY, 0, -1)
+            logger.info(f"Loaded {len(messages)} messages from {REDIS_MESSAGES_KEY}.")
             return messages
         except Exception as e:
-            logger.error(f"Failed to load messages from {redis_key}: {e}", exc_info=True)
+            logger.error(f"Failed to load messages: {e}", exc_info=True)
             return []
+
 
     async def load_nodes(self):
         """
