@@ -22,6 +22,7 @@ from meshtastic.serial_interface import SerialInterface
 import json
 import serial.tools.list_ports  # Required for listing available ports
 from logger import configure_logger, resolve_log_level
+from log_level_filter import LogLevelFilter
 from redis_handler import RedisHandler
 import logging
 
@@ -42,6 +43,11 @@ def parse_arguments():
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "PACKET", "REDIS"],
         default="INFO",
         help="Set logging level (default: INFO)"
+    )
+    parser.add_argument(
+        '--filter',
+        action='store_true',
+        help='Restrict logs to the specified --log-level.'
     )
     parser.add_argument(
         "--display-redis",
@@ -74,8 +80,14 @@ log_level = resolve_log_level(args.log_level)
 if args.debugging:
     print(f"Resolved log level: {log_level} ({logging.getLevelName(log_level)})")
 
+# Instantialte LogLevelFilter if filtering is specified
+log_filter = LogLevelFilter(log_level) if args.filter else None
+
 # Initialize logger with resolved log level
-logger = configure_logger(name=__name__, log_level=log_level)
+logger = configure_logger(name=__name__, 
+                          log_level=log_level,
+                          log_filter=log_filter,
+                          debugging=args.debugging)
 
 # Diagnostic: Print logger's effective level
 if args.debugging:

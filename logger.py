@@ -52,10 +52,12 @@ def resolve_log_level(level_name):
     custom_levels = {"PACKET": PACKET_LEVEL, "REDIS": REDIS_LEVEL}
     return custom_levels.get(level_name, getattr(logging, level_name, logging.INFO))
 
-def configure_logger(name, log_level=logging.INFO, debugging=False):
+def configure_logger(name, log_level=logging.INFO, log_filter=None, debugging=False):
     if debugging:
-    	print(f"Initializing logger: {name}")
-    	print(f"Received log level: {log_level} ({logging.getLevelName(log_level)})")
+        print(f"Initializing logger: {name}")
+        print(f"Received log level: {log_level} ({logging.getLevelName(log_level)})")
+        if log_filter:
+            print(f"Filter instance provided: {log_filter}")
 
     logger = logging.getLogger(name)
 
@@ -80,14 +82,23 @@ def configure_logger(name, log_level=logging.INFO, debugging=False):
     file_formatter = logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s')
     file_handler.setFormatter(file_formatter)
 
+
     # Attach handlers
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
+    # Apply filter to all handlers if specified
+    if log_filter:
+        for handler in logger.handlers:
+            handler.addFilter(log_filter)
+            if debugging:
+                print(f"Filter added to handler: {handler}")
 
     if debugging:
         for handler in logger.handlers:
             print(f"Handler level: {handler.level} ({logging.getLevelName(handler.level)})")
+            if log_filter:
+                print(f"Filter applied: {log_filter}")
         print(f"Logger configured with level: {logger.level} ({logging.getLevelName(logger.level)})")
 
     return logger

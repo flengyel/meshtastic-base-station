@@ -35,8 +35,15 @@ class RedisHandler:
         :param log_level: Logging level for this handler.
         :param logger: Logger instance for configuration. If None, configure a module-specific logger.
         """
-        # Always use the module-specific logger name (__name__)
-        self.logger = configure_logger(name=__name__, log_level=log_level)
+
+        if logger:
+            # Use a child logger based on the parent logger
+            self.logger = logger.getChild(__name__)
+        else:
+            # Fallback to a new logger if no parent logger is provided
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(log_level)
+
 
         # Debugging: Check logger properties after initialization
         if debugging:
