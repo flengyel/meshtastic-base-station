@@ -26,7 +26,7 @@ REDIS_MESSAGES_KEY = "meshtastic:messages"
 REDIS_NODES_KEY = "meshtastic:nodes"
 
 class RedisHandler:
-    def __init__(self, host="localhost", port=6379, log_level=logging.INFO, logger=None):
+    def __init__(self, host="localhost", port=6379, log_level=logging.INFO, logger=None, debugging=False):
         """
         Initialize the RedisHandler.
 
@@ -39,11 +39,10 @@ class RedisHandler:
         self.logger = configure_logger(name=__name__, log_level=log_level)
 
         # Debugging: Check logger properties after initialization
-        print(f"Initialized logger: {self.logger.name}")
-        print(f"Logger level: {self.logger.level} ({logging.getLevelName(self.logger.level)})")
-        print(f"Logger effective level: {self.logger.getEffectiveLevel()} ({logging.getLevelName(self.logger.getEffectiveLevel())})")
-        print(f"Logger handlers: {[handler.level for handler in self.logger.handlers]}")
-        print(f"Logger propagate: {self.logger.propagate}")
+        if debugging:
+            print(f"Initialized logger: {self.logger.name}")
+            print(f"Logger level: {self.logger.level} ({logging.getLevelName(self.logger.level)})")
+            print(f"Logger propagate: {self.logger.propagate}")
 
         # Prevent duplicate handlers
         if logger and not self.logger.hasHandlers():
@@ -54,8 +53,6 @@ class RedisHandler:
         # Redis connection
         self.client = redis.Redis(host=host, port=port, decode_responses=True)
         self.logger.redis(f"Connected to Redis at {host}:{port}")
-        # Debugging: Verify that the `redis` log level is correctly used
-        print(f"Logging at REDIS level: {logging.getLevelName(35)}")
 
 
     async def initialize_broadcast_node(self):
@@ -70,9 +67,6 @@ class RedisHandler:
             await self.client.hset(REDIS_NODES_KEY, broadcast_id, broadcast_name)
             await self.client.hset(f"{REDIS_NODES_KEY}:timestamps", broadcast_id, timestamp)
             self.logger.redis(f"Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
-            # Debugging: Verify that the `redis` log level is correctly used
-            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
-
         except Exception as e:
             self.logger.error(f"Failed to initialize broadcast node: {e}", exc_info=True)
 
@@ -90,8 +84,6 @@ class RedisHandler:
         try:
             await self.client.lpush(redis_key, message)
             self.logger.redis(f"Saved message to {redis_key}: {message}")
-            # Debugging: Verify that the `redis` log level is correctly used
-            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
 
         except Exception as e:
             self.logger.error(f"Failed to save message to {redis_key}: {e}", exc_info=True)
@@ -103,8 +95,6 @@ class RedisHandler:
         try:
             messages = await self.client.lrange(REDIS_MESSAGES_KEY, 0, -1)
             self.logger.redis(f"Loaded {len(messages)} messages from {REDIS_MESSAGES_KEY}.")
-            # Debugging: Verify that the `redis` log level is correctly used
-            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
 
             return messages
         except Exception as e:
@@ -120,8 +110,6 @@ class RedisHandler:
             nodes = await self.client.hgetall(REDIS_NODES_KEY)
             timestamps = await self.client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
             self.logger.redis(f"Loaded {len(nodes)} nodes from Redis.")
-            # Debugging: Verify that the `redis` log level is correctly used
-            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
 
 
             return nodes, timestamps

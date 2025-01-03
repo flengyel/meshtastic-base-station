@@ -21,8 +21,7 @@ from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
 import json
 import serial.tools.list_ports  # Required for listing available ports
-from logger import configure_logger
-from datetime import datetime
+from logger import configure_logger, resolve_log_level
 from redis_handler import RedisHandler
 import logging
 
@@ -49,37 +48,43 @@ def parse_arguments():
         action="store_true",
         help="Display Redis data and exit without connecting to the serial device"
     )
+    parser.add_argument(
+        "--debugging",
+        action="store_true",
+        help="Print diagnostic debugging statements. Does not log."
+    )
     return parser.parse_args()
 
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
 
-from logger import configure_logger, resolve_log_level
 
 # Parse arguments and configure logging
 args = parse_arguments()
 
 # Diagnostic: Print raw log level argument
-print(f"Raw log level argument: {args.log_level}")
+if args.debugging:
+    print(f"Raw log level argument: {args.log_level}")
 
 # Resolve the numeric log level
 log_level = resolve_log_level(args.log_level)
 
 # Diagnostic: Print resolved log level
-print(f"Resolved log level: {log_level} ({logging.getLevelName(log_level)})")
+if args.debugging:
+    print(f"Resolved log level: {log_level} ({logging.getLevelName(log_level)})")
 
 # Initialize logger with resolved log level
 logger = configure_logger(name=__name__, log_level=log_level)
 
 # Diagnostic: Print logger's effective level
-print(f"Logger Effective Level: {logger.getEffectiveLevel()} ({logging.getLevelName(logger.getEffectiveLevel())})")
+if args.debugging:
+    print(f"Logger Effective Level: {logger.getEffectiveLevel()} ({logging.getLevelName(logger.getEffectiveLevel())})")
 
 redis_handler = RedisHandler(log_level=log_level, logger=logger)
 
-
-print(f"Logger Level (Post-RedisHandler): {logger.level}")
-print(f"Logger Handlers (Post-RedisHandler): {[h.level for h in logger.handlers]}")
+if args.debugging:
+    print(f"Logger Handlers (Post-RedisHandler): {[h.level for h in logger.handlers]}")
 
 
 async def process_node_update(update):
@@ -387,7 +392,7 @@ async def main():
     pub.subscribe(on_node_message, "meshtastic.receive.user")
     pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
 
-    logger.info("Subscribed to text, telementry, and user messages.")
+    logger.info("Subscribed to text, user, and telemetry messages.")
 
     tasks = [
         asyncio.create_task(cancellable_task()),
