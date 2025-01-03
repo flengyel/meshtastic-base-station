@@ -211,7 +211,7 @@ class RedisHandler:
                     battery_level=update.get("battery_level"),
                     position=update.get("position")
                 )
-                self.logger.redis(f"Updated node: {update['node_id']} -> {update['node_name']}")
+                self.logger.info(f"Updated node: {update['node_id']} -> {update['node_name']}")
 
             elif update["type"] == "update_message":
                 # Update an existing message by index

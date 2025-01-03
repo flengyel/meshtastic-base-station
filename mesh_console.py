@@ -281,9 +281,16 @@ def on_node_message(packet, interface):
     try:
         # Extract the node ID (fromId)
         node_id = packet.get("fromId")
+
+        # Fall back to 'from' if 'fromId' is None
         if node_id is None:
-            logger.warning(f"Node message is missing the station ID (fromId): {packet}")
-            return  # Exit early as we cannot process a node without a node_id
+            node_id_decimal = packet.get("from")
+            if node_id_decimal is not None:
+                node_id = f"!{node_id_decimal:08x}"  # Convert to hexadecimal Meshtastic format
+                logger.debug(f"Converted 'from' field {node_id_decimal} to node ID {node_id}")
+            else:
+                logger.warning(f"Node message is missing the station ID (fromId): {packet}")
+                return  # Exit early as we cannot process a node without a node_id
 
         # Extract node information
         node_info = packet.get("decoded", {}).get("user", {})
