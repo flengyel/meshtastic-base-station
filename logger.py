@@ -17,52 +17,76 @@
 
 import logging
 
-PACKET_LEVEL = 15  # Custom level between DEBUG and INFO
+PACKET_LEVEL = 15
+REDIS_LEVEL  = 17
 
-def configure_logging(log_level="INFO"):
+def add_custom_log_levels():
     """
-    Configure logging globally and set up the custom 'PACKET' log level.
+    Add custom log levels PACKET and REDIS to the logging module.
     """
-    if not hasattr(logging, "PACKET"):
-        logging.addLevelName(PACKET_LEVEL, "PACKET")
+    logging.addLevelName(PACKET_LEVEL, "PACKET")
+    logging.addLevelName(REDIS_LEVEL, "REDIS")
 
-        def packet(self, message, *args, **kwargs):
-            if self.isEnabledFor(PACKET_LEVEL):
-                self._log(PACKET_LEVEL, message, args, **kwargs)
+    def packet(self, message, *args, **kwargs):
+        if self.isEnabledFor(PACKET_LEVEL):
+            self._log(PACKET_LEVEL, message, args, **kwargs)
 
-        logging.Logger.packet = packet
+    def redis(self, message, *args, **kwargs):
+        if self.isEnabledFor(REDIS_LEVEL):
+            self._log(REDIS_LEVEL, message, args, **kwargs)
 
-    formatter_with_timestamp = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
-    formatter_without_timestamp = logging.Formatter("%(levelname)s: %(message)s")
+    logging.Logger.packet = packet
+    logging.Logger.redis = redis
 
+# This must run before configure_logger() is called
+add_custom_log_levels()
+
+def resolve_log_level(level_name):
+    """
+    Resolve log level name to a numeric value, including custom levels.
+
+    :param level_name: Log level name (e.g., 'INFO', 'REDIS').
+    :return: Numeric log level.
+    """
+    level_name = level_name.upper()
+    custom_levels = {"PACKET": PACKET_LEVEL, "REDIS": REDIS_LEVEL}
+    return custom_levels.get(level_name, getattr(logging, level_name, logging.INFO))
+
+def configure_logger(name, log_level=logging.INFO):
+    print(f"Initializing logger: {name}")
+    print(f"Received log level: {log_level} ({logging.getLevelName(log_level)})")
+
+    logger = logging.getLogger(name)
+
+    if logger.hasHandlers():
+        print("Logger already configured. Returning existing logger.")
+        return logger
+
+    # Set the logger level
+    logger.setLevel(log_level)
+    logger.propagate = False  # Prevent message propagation
+
+    # Console handler
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter_without_timestamp)
+    console_handler.setLevel(log_level)
+    console_formatter = logging.Formatter('%(levelname)s:%(name)s: %(message)s')
+    console_handler.setFormatter(console_formatter)
 
-    file_handler = logging.FileHandler("meshtastic.log", mode="a")
-    file_handler.setFormatter(formatter_with_timestamp)
+    # File handler for detailed logs
+    file_handler = logging.FileHandler('meshtastic.log', mode='a')
+    file_handler.setLevel(log_level)
+    file_formatter = logging.Formatter('%(asctime)s %(levelname)s:%(name)s: %(message)s')
+    file_handler.setFormatter(file_formatter)
 
-    # Convert log_level to numeric if it's a custom level
-    if log_level.upper() == "PACKET":
-        level = PACKET_LEVEL
-    else:
-        level = getattr(logging, log_level.upper(), logging.INFO)
-
-    console_handler.setLevel(level)
-    file_handler.setLevel(level)
-
-    root_logger = logging.getLogger()  # Configure the root logger
-    root_logger.setLevel(level)  # This ensures PACKET is properly applied
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
-
-    # Log configuration details
-    root_logger.info(f"Configured logging level: {log_level}")
-    root_logger.info(f"Effective logger level: {root_logger.getEffectiveLevel()}")
+    # Attach handlers
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
 
-def get_logger(module_name):
-    """
-    Create or retrieve a logger for a specific module.
-    """
-    return logging.getLogger(module_name)
+    for handler in logger.handlers:
+        print(f"Handler level: {handler.level} ({logging.getLevelName(handler.level)})")
+
+
+    print(f"Logger configured with level: {logger.level} ({logging.getLevelName(logger.level)})")
+    return logger
 

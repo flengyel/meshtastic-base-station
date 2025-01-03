@@ -1,6 +1,6 @@
 # mesh_console.py
 #
-# Copyright (C) 2024 Florian Lengyel WM2D
+# Copyright (C) 2024, 2025 Florian Lengyel WM2D
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,15 +21,10 @@ from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
 import json
 import serial.tools.list_ports  # Required for listing available ports
-from logger import configure_logging, get_logger
+from logger import configure_logger
 from datetime import datetime
 from redis_handler import RedisHandler
-
-# Initialize asyncio queue for Redis updates
-redis_update_queue = asyncio.Queue()
-
-# Initialize Redis connection
-redis_handler = RedisHandler()
+import logging
 
 def parse_arguments():
     """
@@ -45,7 +40,7 @@ def parse_arguments():
     parser.add_argument(
         "--log-level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "PACKET"],
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "PACKET", "REDIS"],
         default="INFO",
         help="Set logging level (default: INFO)"
     )
@@ -56,10 +51,36 @@ def parse_arguments():
     )
     return parser.parse_args()
 
+
+# Initialize asyncio queue for Redis updates
+redis_update_queue = asyncio.Queue()
+
+from logger import configure_logger, resolve_log_level
+
 # Parse arguments and configure logging
 args = parse_arguments()
-configure_logging(args.log_level)  # Global logger configured here
-logger = get_logger(__name__)
+
+# Diagnostic: Print raw log level argument
+print(f"Raw log level argument: {args.log_level}")
+
+# Resolve the numeric log level
+log_level = resolve_log_level(args.log_level)
+
+# Diagnostic: Print resolved log level
+print(f"Resolved log level: {log_level} ({logging.getLevelName(log_level)})")
+
+# Initialize logger with resolved log level
+logger = configure_logger(name=__name__, log_level=log_level)
+
+# Diagnostic: Print logger's effective level
+print(f"Logger Effective Level: {logger.getEffectiveLevel()} ({logging.getLevelName(logger.getEffectiveLevel())})")
+
+redis_handler = RedisHandler(log_level=log_level, logger=logger)
+
+
+print(f"Logger Level (Post-RedisHandler): {logger.level}")
+print(f"Logger Handlers (Post-RedisHandler): {[h.level for h in logger.handlers]}")
+
 
 async def process_node_update(update):
     """

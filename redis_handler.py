@@ -17,19 +17,46 @@
 
 import redis.asyncio as redis
 from datetime import datetime
-from logger import get_logger
-
-# Initialize module-specific logger
-logger = get_logger(__name__)
+from logger import configure_logger
+import logging
+import json
 
 # Redis keys for storing messages and nodes
 REDIS_MESSAGES_KEY = "meshtastic:messages"
 REDIS_NODES_KEY = "meshtastic:nodes"
 
 class RedisHandler:
-    def __init__(self, host="localhost", port=6379):
+    def __init__(self, host="localhost", port=6379, log_level=logging.INFO, logger=None):
+        """
+        Initialize the RedisHandler.
+
+        :param host: Redis host. Defaults to 'localhost'.
+        :param port: Redis port. Defaults to 6379.
+        :param log_level: Logging level for this handler.
+        :param logger: Logger instance for configuration. If None, configure a module-specific logger.
+        """
+        # Always use the module-specific logger name (__name__)
+        self.logger = configure_logger(name=__name__, log_level=log_level)
+
+        # Debugging: Check logger properties after initialization
+        print(f"Initialized logger: {self.logger.name}")
+        print(f"Logger level: {self.logger.level} ({logging.getLevelName(self.logger.level)})")
+        print(f"Logger effective level: {self.logger.getEffectiveLevel()} ({logging.getLevelName(self.logger.getEffectiveLevel())})")
+        print(f"Logger handlers: {[handler.level for handler in self.logger.handlers]}")
+        print(f"Logger propagate: {self.logger.propagate}")
+
+        # Prevent duplicate handlers
+        if logger and not self.logger.hasHandlers():
+            for handler in logger.handlers:
+                self.logger.addHandler(handler)
+            self.logger.setLevel(logger.level)
+
+        # Redis connection
         self.client = redis.Redis(host=host, port=port, decode_responses=True)
-        logger.info(f"Connected to Redis at {host}:{port}")
+        self.logger.redis(f"Connected to Redis at {host}:{port}")
+        # Debugging: Verify that the `redis` log level is correctly used
+        print(f"Logging at REDIS level: {logging.getLevelName(35)}")
+
 
     async def initialize_broadcast_node(self):
         """
@@ -42,9 +69,12 @@ class RedisHandler:
 
             await self.client.hset(REDIS_NODES_KEY, broadcast_id, broadcast_name)
             await self.client.hset(f"{REDIS_NODES_KEY}:timestamps", broadcast_id, timestamp)
-            logger.info(f"Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
+            self.logger.redis(f"Initialized broadcast node: {broadcast_id} -> {broadcast_name}")
+            # Debugging: Verify that the `redis` log level is correctly used
+            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
+
         except Exception as e:
-            logger.error(f"Failed to initialize broadcast node: {e}", exc_info=True)
+            self.logger.error(f"Failed to initialize broadcast node: {e}", exc_info=True)
 
     @staticmethod
     def format_timestamp():
@@ -59,9 +89,12 @@ class RedisHandler:
         """
         try:
             await self.client.lpush(redis_key, message)
-            logger.info(f"Saved message to {redis_key}: {message}")
+            self.logger.redis(f"Saved message to {redis_key}: {message}")
+            # Debugging: Verify that the `redis` log level is correctly used
+            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
+
         except Exception as e:
-            logger.error(f"Failed to save message to {redis_key}: {e}", exc_info=True)
+            self.logger.error(f"Failed to save message to {redis_key}: {e}", exc_info=True)
 
     async def load_messages(self):
         """
@@ -69,10 +102,13 @@ class RedisHandler:
         """
         try:
             messages = await self.client.lrange(REDIS_MESSAGES_KEY, 0, -1)
-            logger.info(f"Loaded {len(messages)} messages from {REDIS_MESSAGES_KEY}.")
+            self.logger.redis(f"Loaded {len(messages)} messages from {REDIS_MESSAGES_KEY}.")
+            # Debugging: Verify that the `redis` log level is correctly used
+            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
+
             return messages
         except Exception as e:
-            logger.error(f"Failed to load messages: {e}", exc_info=True)
+            self.logger.error(f"Failed to load messages: {e}", exc_info=True)
             return []
 
 
@@ -83,10 +119,14 @@ class RedisHandler:
         try:
             nodes = await self.client.hgetall(REDIS_NODES_KEY)
             timestamps = await self.client.hgetall(f"{REDIS_NODES_KEY}:timestamps")
-            logger.info(f"Loaded {len(nodes)} nodes from Redis.")
+            self.logger.redis(f"Loaded {len(nodes)} nodes from Redis.")
+            # Debugging: Verify that the `redis` log level is correctly used
+            print(f"Logging at REDIS level: {logging.getLevelName(35)}")
+
+
             return nodes, timestamps
         except Exception as e:
-            logger.error(f"Failed to load nodes: {e}", exc_info=True)
+            self.logger.error(f"Failed to load nodes: {e}", exc_info=True)
             return {}, {}
 
     async def update_node(self, node_id, node_name, timestamp, battery_level=None, position=None):
@@ -104,7 +144,7 @@ class RedisHandler:
                     await pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:longitude", position.get("longitude", ""))
                     await pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:altitude", position.get("altitude", ""))
                 await pipe.execute()
-            logger.info(f"Updated node {node_id}: name={node_name}, battery={battery_level}, position={position}")
+            self.logger.redis(f"Updated node {node_id}: name={node_name}, battery={battery_level}, position={position}")
         except Exception as e:
             logger.error(f"Failed to update node {node_id}: {e}", exc_info=True)
 
@@ -116,7 +156,7 @@ class RedisHandler:
             node_info = interface.getMyNodeInfo()
             node_id_decimal = node_info.get("num", None)
             if node_id_decimal is None:
-                logger.error("Node ID (num) not found in node info.")
+                self.logger.error("Node ID (num) not found in node info.")
                 return
 
             # Convert the numeric node ID to hexadecimal with Meshtastic format (!hex)
@@ -128,9 +168,9 @@ class RedisHandler:
             # Save the connected node details and timestamp in Redis
             await self.client.hset(REDIS_NODES_KEY, node_id_hex, node_name)
             await self.client.hset(f"{REDIS_NODES_KEY}:timestamps", node_id_hex, timestamp)
-            logger.info(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
+            self.logger.redis(f"[{timestamp}] Connected node: {node_id_hex} -> {node_name}")
         except Exception as e:
-            logger.error(f"Failed to initialize connected node: {e}", exc_info=True)
+            self.logger.error(f"Failed to initialize connected node: {e}", exc_info=True)
 
     async def update_stored_messages(self, node_id, new_name):
         """
@@ -144,11 +184,11 @@ class RedisHandler:
                     if message_dict["station_id"] == node_id:
                         message_dict["station_id"] = new_name
                         await self.client.lset(REDIS_MESSAGES_KEY, i, json.dumps(message_dict))
-                        logger.debug(f"Updated message at index {i}: {message_dict}")
+                        self.logger.debug(f"Updated message at index {i}: {message_dict}")
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Skipping malformed message at index {i}: {message}")
+                    self.logger.warning(f"Skipping malformed message at index {i}: {message}")
         except Exception as e:
-            logger.error(f"Failed to update stored messages for node {node_id}: {e}", exc_info=True)
+            self.logger.error(f"Failed to update stored messages for node {node_id}: {e}", exc_info=True)
 
 
     async def process_update(self, update):
@@ -165,7 +205,7 @@ class RedisHandler:
                     "message": update["text_message"]
                 })
                 await self.save_message(REDIS_MESSAGES_KEY, message)
-                logger.info(f"Saved message: {message}")
+                self.logger.redis(f"Saved message: {message}")
 
             elif update["type"] == "node":
                 # Update node information
@@ -176,15 +216,15 @@ class RedisHandler:
                     battery_level=update.get("battery_level"),
                     position=update.get("position")
                 )
-                logger.info(f"Updated node: {update['node_id']} -> {update['node_name']}")
+                self.logger.redis(f"Updated node: {update['node_id']} -> {update['node_name']}")
 
             elif update["type"] == "update_message":
                 # Update an existing message by index
                 index = update["index"]
                 updated_message = update["updated_message"]
                 await self.client.lset(REDIS_MESSAGES_KEY, index, updated_message)
-                logger.info(f"Updated message at index {index}: {updated_message}")
+                self.logger.redis(f"Updated message at index {index}: {updated_message}")
 
         except Exception as e:
-            logger.error(f"Error processing update: {e}", exc_info=True)
+            self.logger.error(f"Error processing update: {e}", exc_info=True)
 
