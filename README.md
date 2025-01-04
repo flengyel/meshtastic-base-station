@@ -1,143 +1,177 @@
-# Meshtastic Console
+# Meshtastic Base Station
 
-Meshtastic Console (`mesh_console.py`) is a Python program to interface with Meshtastic devices through a serial connection. It implements monitoring, managing, and interacting with nodes in a Meshtastic mesh network. 
+A Python-based base station for Meshtastic devices that provides persistent storage of messages and node announcements using Redis. This project implements a lightweight, resource-efficient management system for Meshtastic networks, ensuring that even resource-constrained devices like Raspberry Pi can serve as reliable base stations.
 
 ## Features
 
-Node Activity Monitoring: Shows network nodes and their last activity timestamps.
+- **Message Handling:** Receives and stores text messages sent through the network
+- **Node Management:** Tracks node names and their associated station IDs
+- **Persistent Storage:** Uses Redis for reliable storage of messages and node information
+- **Flexible Logging:** 
+  - Custom levels for packet and Redis operations
+  - Multiple output formats and filtering options
+  - Support for threshold or exact level matching
+- **Resource Efficient:** Designed for reliable operation on Raspberry Pi and similar devices
+- **Async Operation:** Uses asyncio for non-blocking operations and clean shutdown
+- **Extensible Design:** Architecture supports future enhancements
 
-- **Message Handling:** Receives and displays text messages sent through the network.
-
-- **Node Management:** Keeps track of node names and their associated station IDs, synchronizing changes.
-
-- **Redis integration:** Provides persistence and scalability by storing and retrieving messages and node information.
-
-- **Asynchronous Updates:** Uses an asyncio queue to manage updates to Redis, ensuring non-blocking operations.
-
-- **Connected Node Initialization:** The program queries the Meshtastic API for the station ID of the connected node.
-
-- **Extensibility:** Designed with features like Kivy interfaces, RSSI indicators, and mapping capabilities in mind for future development.
-
-## Features Overview
-
-This project implements lightweight, resource-efficient management of Meshtastic networks, ensuring that even resource-constrained devices like Raspberry Pi will serve as reliable base stations.
-
-## Requirements
+## Prerequisites
 
 ### Hardware
-
-You will need a Meshtastic-compatible device that has a serial connection.
+- Meshtastic-compatible device with serial connection (e.g., LILYGO® T-Beam)
+- Computer or Raspberry Pi running Linux (tested on Raspberry Pi 5)
 
 ### Software
-
 - Python 3.8+
+- Redis server
+- Required Python packages:
+  ```
+  redis-py-async
+  meshtastic
+  pyserial
+  pypubsub
+  protobuf
+  ```
 
-- Redis
+## Installation
 
-- Required Python Libraries:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/meshtastic-base-station.git
+   cd meshtastic-base-station
+   ```
 
-  - asyncio
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-  - pubsub
-
-  - meshtastic
-
-  - redis
-
-  - json
-
-Install dependencies with:
-
-```bash
-
-pip install -r requirements.txt
-
-```
+3. Ensure Redis server is running:
+   ```bash
+   redis-server
+   ```
 
 ## Usage
 
-### Running the Console
+### Basic Operation
 
+Start the base station with default settings:
 ```bash
-
 python mesh_console.py
-
 ```
 
-### Redis Keys and Structure
-
-A Redis backend database of time-stamped node and message data provides persistence and scalability. The database keeps data across sessions for protection against system outages, to facilitate system maintenance, and to keep a detailed network history. 
-
-- **`meshtastic:nodes`**:
-
-  - **Key**: Station ID.
-
-  - **Value**: Node name.
-
-- **`meshtastic:nodes:timestamps`**:
-
-  - **Key**: Station ID.
-
-  - **Value**: Timestamp.
-
-- **`meshtastic:messages`**:
-
-  - A list containing serialized message JSON objects with:
-
-    - `timestamp`
-
-    - `station_id`
-
-    - `message`
-
-### Interacting with Redis
-
-To view the stored keys:
-
-```bash
-
-redis-cli KEYS *
+### Command Line Options
 
 ```
+usage: mesh_console.py [-h] [--device DEVICE] [--log LOG] [--threshold]
+                      [--no-file-logging] [--display-redis] [--debugging]
 
-To view nodes:
+options:
+  -h, --help       show this help message and exit
+  --device DEVICE  Serial interface device (default: /dev/ttyACM0)
 
+Logging Options:
+  --log LOG        Comma-separated list of log levels to include
+  --threshold      Treat log level as threshold
+  --no-file-logging
+                   Disable logging to file
+
+Other Options:
+  --display-redis  Display Redis data and exit
+  --debugging      Print diagnostic debugging statements
+```
+
+### Example Commands
+
+Show only packet data:
 ```bash
+python mesh_console.py --log PACKET
+```
 
+Enable debug mode without file logging:
+```bash
+python mesh_console.py --log DEBUG --threshold --no-file-logging
+```
+
+Display stored data:
+```bash
+python mesh_console.py --display-redis --log INFO,REDIS
+```
+
+### Log Levels
+- Standard levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- Custom levels: PACKET (for mesh traffic), REDIS (for storage operations)
+
+### Redis Data Structure
+
+The base station uses the following Redis keys:
+
+- **meshtastic:nodes**
+  - Hash mapping station IDs to node names
+  - Example: `HGET meshtastic:nodes !abcd1234`
+
+- **meshtastic:nodes:timestamps**
+  - Hash mapping station IDs to last seen timestamps
+  - Example: `HGET meshtastic:nodes:timestamps !abcd1234`
+
+- **meshtastic:messages**
+  - List containing JSON-formatted messages with:
+    - timestamp
+    - station_id
+    - message
+    - to_id (recipient)
+
+### Redis CLI Examples
+
+View all nodes:
+```bash
 redis-cli HGETALL meshtastic:nodes
-
 ```
 
-To delete a specific node:
-
+Delete specific node:
 ```bash
-
-redis-cli HDEL meshtastic:nodes <field>
-
-redis-cli HDEL meshtastic:nodes:timestamps <field>
-
+redis-cli HDEL meshtastic:nodes <station_id>
+redis-cli HDEL meshtastic:nodes:timestamps <station_id>
 ```
+
+## Architecture
+
+The project consists of several key components:
+
+- `mesh_console.py`: Main application entry point and CLI interface
+- `redis_handler.py`: Minimal Redis storage operations
+- `meshtastic_data_handler.py`: Processes Meshtastic packets and JSON conversion
+- `logger.py`: Configurable logging system
+- `log_level_filter.py`: Custom log filtering
+
+### Data Flow
+
+1. Meshtastic device sends messages/announcements
+2. Callbacks capture and queue the packets
+3. Redis dispatcher processes queued packets
+4. MeshtasticDataHandler converts packets to JSON
+5. RedisHandler stores JSON in Redis
+6. Data persists for future retrieval
 
 ## Future Development
 
-- **Prioritized Enhancements**:
-  - **Kivy Interfaces**: Scrollable displays for nodes and messages.
-  - **RSSI Indicators**: Track signal strength.
-  - **Mapping Capabilities**: Correlate node activity and messages with geographic positions.
-
-- **Advanced Node Insights**:
-  - Extend node data to include battery metrics and geographic position.
-  - Display geographic and signal data via a Leaflet map served by a Flask web server.
-
-- **Device Configuration**: 
-- Enhance the console to send messages and reconfigure devices.
+### Planned Features
+- GUI interface with scrollable displays for nodes and messages
+- RSSI (signal strength) monitoring and visualization
+- Geographic position tracking and mapping
+- Integration with web interfaces (e.g., Leaflet maps via Flask)
+- Enhanced device configuration capabilities
+- Extended node metrics (battery, position, etc.)
 
 ## Contributing
 
-Contributions are welcome! Please submit issues or pull requests on the GitHub repository.
+Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## License
 
-Project licensed under the GNU General Public License v3.0. For more details, see [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
+This project is licensed under the GNU General Public License v3.0 - see the [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.html) for details.
 
+## Acknowledgments
 
+- Meshtastic Project (https://meshtastic.org)
+- Contributors to the Meshtastic Python API
