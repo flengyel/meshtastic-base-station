@@ -140,6 +140,13 @@ class RedisHandler:
                     await pipe.hset(f"{REDIS_NODES_KEY}:position", f"{node_id}:altitude", position.get("altitude", ""))
                 await pipe.execute()
             self.logger.redis(f"Updated node {node_id}: name={node_name}, battery={battery_level}, position={position}")
+            
+            # Update associated messages
+            await self.update_stored_messages(node_id, node_name)
+
+        except asyncio.CancelledError:
+            self.logger.warning("update_node cancelled during node update.")
+            raise
         except Exception as e:
             logger.error(f"Failed to update node {node_id}: {e}", exc_info=True)
 
@@ -172,7 +179,7 @@ class RedisHandler:
         Update stored messages with a new node name if the node ID has changed.
         """
         try:
-            messages = await self.load_messages(REDIS_MESSAGES_KEY)
+            messages = await self.load_messages()
             for i, message in enumerate(messages):
                 try:
                     message_dict = json.loads(message)
@@ -191,35 +198,35 @@ class RedisHandler:
         Process an update from the queue and perform the appropriate Redis operation.
         """
         try:
-            if update["type"] == "message":
-                # Save new message
-                message = json.dumps({
-                    "timestamp": update["timestamp"],
-                    "station_id": update["station_id"],
-                    "to_id": update["to_id"],
-                    "message": update["text_message"]
-                })
-                await self.save_message(REDIS_MESSAGES_KEY, message)
-                self.logger.redis(f"Saved message: {message}")
+            try:
+                if update["type"] == "message":
+                    # Save new message
+                    message = json.dumps({
+                        "timestamp": update["timestamp"],
+                        "station_id": update["station_id"],
+                        "to_id": update["to_id"],
+                        "message": update["text_message"]
+                    })
+                    await self.save_message(REDIS_MESSAGES_KEY, message)
+                    self.logger.redis(f"Saved message: {message}")
 
-            elif update["type"] == "node":
-                # Update node information
-                await self.update_node(
-                    node_id=update["node_id"],
-                    node_name=update["node_name"],
-                    timestamp=update["timestamp"],
-                    battery_level=update.get("battery_level"),
-                    position=update.get("position")
-                )
-                self.logger.info(f"Updated node: {update['node_id']} -> {update['node_name']}")
+                elif update["type"] == "node":
+                    # Update node information
+                    await self.update_node(
+                        node_id=update["node_id"],
+                        node_name=update["node_name"],
+                        timestamp=update["timestamp"],
+                        battery_level=update.get("battery_level"),
+                        position=update.get("position")
+                    )
+                    self.logger.info(f"Updated node: {update['node_id']} -> {update['node_name']}")
 
-            elif update["type"] == "update_message":
-                # Update an existing message by index
-                index = update["index"]
-                updated_message = update["updated_message"]
-                await self.client.lset(REDIS_MESSAGES_KEY, index, updated_message)
-                self.logger.redis(f"Updated message at index {index}: {updated_message}")
+            except asyncio.CancelledError:
+               self.logger.warning("Task cancelled during update operation.")
+               raise
 
         except Exception as e:
             self.logger.error(f"Error processing update: {e}", exc_info=True)
 
+        finally:
+            self.logger.redis("process_update done")

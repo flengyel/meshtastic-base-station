@@ -98,39 +98,39 @@ redis_handler = RedisHandler(log_level=log_level, logger=logger)
 if args.debugging:
     print(f"Logger Handlers (Post-RedisHandler): {[h.level for h in logger.handlers]}")
 
-
-async def process_node_update(update):
-    """
-    Asynchronous function to process node updates in Redis.
-    """
-    try:
-        # Delegate node update to RedisHandler
-        await redis_handler.update_node(
-            node_id=update["node_id"],
-            node_name=update["node_name"],
-            timestamp=update["timestamp"],
-            battery_level=update.get("battery_level"),
-            position=update.get("position")
-        )
-
-        # Delegate stored message updates to RedisHandler
-        await redis_handler.update_stored_messages(update["node_id"], update["node_name"])
-    except Exception as e:
-        logger.error(f"Error processing node update: {e}", exc_info=True)
-
-async def redis_writer():
+async def redis_dispatcher():
     """
     Asynchronous coroutine to process Redis updates from the queue.
+    Handles graceful cancellation to ensure pending tasks are completed.
     """
-    while True:
-        update = await redis_update_queue.get()  # Wait for an update
-        try:
-            # Delegate update processing to RedisHandler
-            await redis_handler.process_update(update)
-        except Exception as e:
-            logger.error(f"Error writing to Redis: {e}", exc_info=True)
-        finally:
-            redis_update_queue.task_done()  # Mark the task as done
+    try:
+        logger.info("Redis dispatcher task started.")
+        while True:
+            if redis_update_queue.qsize() > 0:
+                update = await redis_update_queue.get()  # Wait for an update
+                try:
+                    # Delegate update processing to RedisHandler
+                    await redis_handler.process_update(update)
+                except Exception as e:
+                    logger.error(f"Error processing update: {e}", exc_info=True)
+                finally:
+                    redis_update_queue.task_done()  # Always mark task as done
+            else:
+                await asyncio.sleep(0.01)  # Small delay to avoid CPU hogging
+    except asyncio.CancelledError:
+        logger.debug("Redis dispatcher task cancelled.")
+        while not redis_update_queue.empty():
+            update = redis_update_queue.get_nowait()
+            try:
+                # Process remaining updates in the queue
+                await redis_handler.process_update(update)
+            except Exception as e:
+                logger.error(f"Error writing remaining updates to Redis: {e}", exc_info=True)
+            finally:
+                redis_update_queue.task_done()
+        logger.debug("Redis dispatcher task exited.")
+
+
 
 async def load_nodes():
     """
@@ -204,20 +204,7 @@ async def load_messages():
 
         # Log sorted messages
         for message in sorted_messages:
-            logger.info(
-                f"[{message['timestamp']}] {message['station_id']} -> {message['to_id']}: {message['message']}"
-            )
-
-
-async def cancellable_task():
-    """
-    A cancellable infinite loop task.
-    """
-    try:
-        while True:
-            await asyncio.sleep(0.01) # Small delay to avoid CPU hogging
-    except asyncio.CancelledError:
-        logger.info("Exiting...")
+            logger.info(f"[{message['timestamp']}] {message['station_id']} -> {message['to_id']}: {message['message']}")
 
 def on_telemetry_message(packet, interface):
     """
@@ -267,6 +254,7 @@ def on_text_message(packet, interface):
             "text_message": text_message,
             "timestamp": timestamp
         })
+        logger.info(f"[{timestamp}] {station_id} -> {to_id}: {text_message}")
     except Exception as e:
         logger.error(f"Error processing text message: {e}", exc_info=True)
 
@@ -316,8 +304,8 @@ def on_node_message(packet, interface):
             "timestamp": timestamp
         })
 
-        # Log the node announcement at DEBUG level
-        logger.debug(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
+        # Log the node announcement at INFO level
+        logger.info(f"Node announcement: {timestamp} Node {node_id}: {node_name}")
 
     except Exception as e:
         logger.error(f"Error processing node message: {e}", exc_info=True)
@@ -409,14 +397,14 @@ async def main():
     # Subscribe to message topics using pubsub
     pub.subscribe(on_text_message, "meshtastic.receive.text")
     pub.subscribe(on_node_message, "meshtastic.receive.user")
-    pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
+    #pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
 
     logger.info("Subscribed to text, user, and telemetry messages.")
 
     tasks = [
-        asyncio.create_task(cancellable_task()),
-        asyncio.create_task(redis_writer())
+        asyncio.create_task(redis_dispatcher())
     ]
+    logger.debug(f"Created redis_dispatcher task: {tasks[0]}")
 
     try:
         await asyncio.gather(*tasks)
