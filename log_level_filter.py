@@ -16,26 +16,33 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+from typing import Union, List, Set
 
 class LogLevelFilter(logging.Filter):
     """
-    Filters to exclude logs other than the specified level.
+    Flexible log filter that can handle single level, multiple levels, or level thresholds.
     """
-    def __init__(self, level):
+    def __init__(self, levels: Union[int, List[int], Set[int]], threshold: bool = False):
         """
-        Initialize the filter with a specific log level.
+        Initialize the filter with specific levels or a threshold.
 
-        :param level: The numeric log level to filter by.
+        :param levels: Single level or collection of levels to filter by
+        :param threshold: If True, allow all levels >= min(levels)
         """
         super().__init__()
-        self.level = level
+        self.levels = {levels} if isinstance(levels, int) else set(levels)
+        self.threshold = threshold
+        self._min_level = min(self.levels) if self.threshold else None
 
     def filter(self, record):
         """
-        Filter out logs unequal to the specified level.
+        Filter log records based on level.
 
-        :param record: The log record to check.
-        :return: True iff the record's level equals the filter's level.
+        :param record: The log record to check
+        :return: True if the record should be logged
         """
-        return record.levelno == self.level
+        if self.threshold:
+            return record.levelno >= self._min_level
+        return record.levelno in self.levels
+
 
