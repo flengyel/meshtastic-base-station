@@ -18,14 +18,15 @@
 import json
 import logging
 from datetime import datetime
-from typing import TypedDict, Optional, Dict, Any, Type, get_type_hints, Union, get_args
+from typing import TypedDict, Optional, Dict, Any 
 import typing
-from type_validation import validate_typed_dict
-
 from meshtastic_types import (
-    Metrics, UserInfo, NodeInfo, TextMessage, 
+    Metrics, UserInfo, NodeInfo, TextMessage,
+    DeviceTelemetry, NetworkTelemetry,  
     MeshtasticPacket, PACKET_TYPES
 )
+from type_validation import validate_typed_dict
+
 
 class MeshtasticDataHandler:
     """
@@ -101,60 +102,113 @@ class MeshtasticDataHandler:
             self.logger.error(f"Error processing node info: {e}", exc_info=True)
             raise
 
-
-
-
-
     def _process_textmessage(self, packet: Dict[str, Any]) -> TextMessage:
         """
         Process TEXT_MESSAGE_APP packet.
-        
+
         Args:
             packet: Raw packet dictionary
-            
+
         Returns:
-            TextMessage dictionary
+            TextMessage dictionary with proper typing
         """
-        return {
-            'type': 'text',
-            'timestamp': datetime.now().isoformat(),
-            'from_num': packet['from'],
-            'from_id': packet['fromId'],
-            'to_num': packet['to'],
-            'to_id': packet['toId'],
-            'text': packet['decoded']['text'],
-            'metrics': self._extract_metrics(packet),
-            'raw': packet['raw']
-        }
+        try:
+            text_message: TextMessage = {
+                'type': 'text',
+                'timestamp': datetime.now().isoformat(),
+                'from_num': int(packet['from']),
+                'from_id': str(packet['fromId']),
+                'to_num': int(packet['to']),
+                'to_id': str(packet['toId']),
+                'text': str(packet['decoded']['text']),
+                'metrics': {
+                    'rx_time': int(packet['rxTime']),
+                    'rx_snr': float(packet.get('rxSnr', 0)),
+                    'rx_rssi': int(packet.get('rxRssi', 0)),
+                    'hop_limit': int(packet.get('hopLimit', 3))
+                },
+                'raw': str(packet['raw'])
+            }
+        
+            # Validate against TextMessage TypedDict
+            validate_typed_dict(text_message, TextMessage)
+            self.logger.debug(f"Validated text_message structure: {text_message}")
+        
+            return text_message
+
+        except Exception as e:
+            self.logger.error(f"Error processing text message: {e}", exc_info=True)
+            raise
+
+    def _process_device_telemetry(self, packet: Dict[str, Any]) -> DeviceTelemetry:
+        """
+        Process device telemetry packet.
+        """
+        try:
+            telemetry = packet['decoded']['telemetry']
+            device_telemetry: DeviceTelemetry = {
+                'type': 'device_telemetry',
+                'timestamp': datetime.now().isoformat(),
+                'from_num': int(packet['from']),
+                'from_id': str(packet['fromId']),
+                'device_metrics': {
+                    'battery_level': int(telemetry['deviceMetrics']['batteryLevel']),
+                    'voltage': float(telemetry['deviceMetrics']['voltage']),
+                    'channel_utilization': float(telemetry['deviceMetrics'].get('channelUtilization', 0.0)),
+                    'air_util_tx': float(telemetry['deviceMetrics']['airUtilTx']),
+                    'uptime_seconds': int(telemetry['deviceMetrics']['uptimeSeconds'])
+                },
+                'metrics': self._extract_metrics(packet),
+                'raw': str(packet['raw'])
+            }
+            
+            validate_typed_dict(device_telemetry, DeviceTelemetry)
+            self.logger.debug(f"Validated device telemetry structure: {device_telemetry}")
+            
+            return device_telemetry
+    
+        except Exception as e:
+            self.logger.error(f"Error processing device telemetry: {e}", exc_info=True)
+            raise
+
 
     async def process_packet(self, packet: Dict[str, Any], packet_type: str) -> None:
         """
         Process a Meshtastic packet and store it in Redis.
-        
+
         Args:
             packet: Raw packet dictionary
             packet_type: Type of packet ('text' or 'node')
         """
         try:
             self.logger.debug(f"Processing {packet_type} packet")
-            
+    
             # Convert based on packet type
             portnum = packet['decoded']['portnum']
             if portnum == 'NODEINFO_APP':
                 processed = self._process_nodeinfo(packet)
                 await self.redis.store_node(json.dumps(processed))
                 self.logger.info(f"Stored node info for {processed['from_id']}")
-                
+                # Display node info immediately
+                self.logger.info(
+                    f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['long_name']}"
+                )
+
             elif portnum == 'TEXT_MESSAGE_APP':
                 processed = self._process_textmessage(packet)
                 await self.redis.store_message(json.dumps(processed))
                 self.logger.info(f"Stored text message from {processed['from_id']}")
-                
+                # Display message immediately
+                self.logger.info(
+                    f"[{processed['timestamp']}] {processed['from_id']} -> {processed['to_id']}: {processed['text']}"
+                )
+
             else:
                 self.logger.warning(f"Unknown packet type: {portnum}")
-            
+
         except Exception as e:
             self.logger.error(f"Error processing {packet_type} packet: {e}", exc_info=True)
+
 
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON message string for display."""
