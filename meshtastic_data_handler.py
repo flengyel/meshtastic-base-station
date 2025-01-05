@@ -18,7 +18,9 @@
 import json
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import TypedDict, Optional, Dict, Any, Type, get_type_hints, Union, get_args
+import typing
+from type_validation import validate_typed_dict
 
 from meshtastic_types import (
     Metrics, UserInfo, NodeInfo, TextMessage, 
@@ -44,47 +46,64 @@ class MeshtasticDataHandler:
     def _extract_metrics(self, packet: Dict[str, Any]) -> Metrics:
         """
         Extract network metrics from a packet.
-        
+
         Args:
             packet: Raw packet dictionary
-            
+
         Returns:
-            Metrics dictionary
+            Metrics dictionary with optional fields
         """
         return {
             'rx_time': packet['rxTime'],
-            'rx_snr': packet['rxSnr'],
-            'rx_rssi': packet['rxRssi'],
-            'hop_limit': packet['hopLimit']
+            'rx_snr': packet.get('rxSnr'),     # Optional
+            'rx_rssi': packet.get('rxRssi'),   # Optional
+            'hop_limit': packet.get('hopLimit', 3)  # Default to 3 if not present
         }
 
+
     def _process_nodeinfo(self, packet: Dict[str, Any]) -> NodeInfo:
-        """
-        Process NODEINFO_APP packet.
+        """Process NODEINFO_APP packet."""
+        try:
+            user_info = dict(packet['decoded']['user'])
         
-        Args:
-            packet: Raw packet dictionary
-            
-        Returns:
-            NodeInfo dictionary
-        """
-        user_info = packet['decoded']['user']
-        return {
-            'type': 'nodeinfo',
-            'timestamp': datetime.now().isoformat(),
-            'from_num': packet['from'],
-            'from_id': packet['fromId'],
-            'user': {
-                'id': user_info['id'],
-                'long_name': user_info['longName'],
-                'short_name': user_info['shortName'],
-                'macaddr': user_info['macaddr'],
-                'hw_model': user_info['hwModel'],
-                'raw': user_info['raw']
-            },
-            'metrics': self._extract_metrics(packet),
-            'raw': packet['raw']
-        }
+            node_info = {
+                'type': 'nodeinfo',
+                'timestamp': datetime.now().isoformat(),
+                'from_num': int(packet['from']),
+                'from_id': str(packet['fromId']),
+                'user': {
+                    'id': str(user_info['id']),
+                    'long_name': str(user_info['longName']),
+                    'short_name': str(user_info['shortName']),
+                    'macaddr': str(user_info['macaddr']),
+                    'hw_model': str(user_info['hwModel']),
+                    'raw': str(user_info['raw'])
+                },
+                'metrics': {
+                    'rx_time': int(packet['rxTime']),
+                    'rx_snr': float(packet.get('rxSnr', 0)),
+                    'rx_rssi': int(packet.get('rxRssi', 0)),
+                    'hop_limit': int(packet.get('hopLimit', 3))
+                },
+                'raw': str(packet['raw'])
+            }
+        
+            # Validate against NodeInfo TypedDict
+            validate_typed_dict(node_info, NodeInfo)
+            self.logger.debug(f"Validated node_info structure: {node_info}")
+        
+            return node_info
+
+        except ValueError as e:
+            self.logger.error(f"Node info validation failed: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error processing node info: {e}", exc_info=True)
+            raise
+
+
+
+
 
     def _process_textmessage(self, packet: Dict[str, Any]) -> TextMessage:
         """
