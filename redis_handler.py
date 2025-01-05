@@ -24,24 +24,34 @@ class RedisHandler:
     """
     Minimal Redis handler that stores raw JSON data without making assumptions about structure.
     """
-    async def __init__(self, host="localhost", port=6379, logger=None):
+
+    def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         try:
             self.client = redis.Redis(host=host, port=port, decode_responses=True)
-            # Test connection
-            ping_result = await self.client.ping()
-            self.logger.debug(f"Redis connection test: {ping_result}")
+            self.logger.debug("Redis handler initialized")
         except Exception as e:
-            self.logger.error(f"Failed to connect to Redis: {e}", exc_info=True)
+            self.logger.error(f"Failed to create Redis client: {e}", exc_info=True)
             raise
-            
+        
         # Define Redis keys
         self.keys = {
             'messages': 'meshtastic:messages',
             'nodes': 'meshtastic:nodes'
         }
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
+
+    async def verify_connection(self):
+        """Verify Redis connection is working."""
+        try:
+            result = await self.client.ping()
+            self.logger.debug(f"Redis connection test: {result}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Redis connection test failed: {e}", exc_info=True)
+            raise
+
 
     async def store(self, key: str, data: str):
         """

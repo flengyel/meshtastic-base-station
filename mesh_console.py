@@ -170,6 +170,18 @@ async def redis_dispatcher(data_handler):
         logger.debug("Redis dispatcher completed final updates")
         raise  # Re-raise to ensure proper task cleanup
 
+# minimal implementation for now
+def on_telemetry_message(packet, interface):
+    """Callback for telemetry messages."""
+    logger.packet(f"on_telemetry_message: {packet}")
+    try:
+        redis_update_queue.put_nowait({
+            "type": "telemetry",
+            "packet": packet
+        })
+    except Exception as e:
+        logger.error(f"Error in telemetry callback: {e}", exc_info=True)
+
 def suggest_available_ports():
     """List available serial ports."""
     try:
@@ -199,6 +211,7 @@ async def main():
 
     # Initialize handlers
     redis_handler = RedisHandler(logger=logger)
+    await redis_handler.verify_connection()
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 
     # Display Redis data and exit if requested
@@ -226,7 +239,8 @@ async def main():
     # Subscribe to message topics
     pub.subscribe(on_text_message, "meshtastic.receive.text")
     pub.subscribe(on_node_message, "meshtastic.receive.user")
-    logger.info("Subscribed to text and user messages.")
+    pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
+    logger.info("Subscribed to text, user, and telemetry messages.")
 
     # Start Redis dispatcher
     dispatcher_task = asyncio.create_task(redis_dispatcher(data_handler))
