@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+# redis_handler.py
+
 import redis.asyncio as redis
 import logging
 
@@ -22,35 +24,48 @@ class RedisHandler:
     """
     Minimal Redis handler that stores raw JSON data without making assumptions about structure.
     """
-    def __init__(self, host="localhost", port=6379, logger=None):
+    async def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
-        self.client = redis.Redis(host=host, port=port, decode_responses=True)
-        
+        try:
+            self.client = redis.Redis(host=host, port=port, decode_responses=True)
+            # Test connection
+            ping_result = await self.client.ping()
+            self.logger.debug(f"Redis connection test: {ping_result}")
+        except Exception as e:
+            self.logger.error(f"Failed to connect to Redis: {e}", exc_info=True)
+            raise
+            
         # Define Redis keys
         self.keys = {
             'messages': 'meshtastic:messages',
             'nodes': 'meshtastic:nodes'
         }
+        self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
     async def store(self, key: str, data: str):
         """
         Store raw data string in Redis list.
-        
         :param key: Redis key to store under
         :param data: Raw data string (expected to be JSON)
         """
         try:
-            await self.client.lpush(key, data)
+            self.logger.debug(f"Attempting to store {len(data)} bytes in key: {key}")
+            result = await self.client.lpush(key, data)
+            self.logger.debug(f"Redis lpush result: {result}")
             self.logger.redis(f"Stored data in {key}")
+            
+            # Verify storage
+            length = await self.client.llen(key)
+            self.logger.debug(f"Current length of {key}: {length}")
+            
         except Exception as e:
-            self.logger.error(f"Failed to store data in {key}: {e}")
+            self.logger.error(f"Failed to store data in {key}: {e}", exc_info=True)
             raise
 
     async def load(self, key: str, start: int = 0, end: int = -1):
         """
         Load raw data from Redis list.
-        
         :param key: Redis key to load from
         :param start: Start index
         :param end: End index (-1 for all)
@@ -66,10 +81,12 @@ class RedisHandler:
 
     async def store_message(self, json_message: str):
         """Store a raw JSON message."""
+        self.logger.debug(f"Storing message: {json_message[:200]}...")  # First 200 chars
         await self.store(self.keys['messages'], json_message)
 
     async def store_node(self, json_node: str):
         """Store a raw JSON node update."""
+        self.logger.debug(f"Storing node: {json_node[:200]}...")  # First 200 chars
         await self.store(self.keys['nodes'], json_node)
 
     async def load_messages(self, limit: int = -1):
