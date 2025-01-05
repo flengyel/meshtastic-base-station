@@ -132,26 +132,42 @@ async def redis_dispatcher(data_handler):
     """Process Redis updates from the queue."""
     try:
         logger.info("Redis dispatcher task started.")
+        last_size = 0
         while True:
             try:
-                # Use wait_for to allow for cancellation
+                current_size = redis_update_queue.qsize()
+                if current_size != last_size:
+                    logger.debug(f"Queue size changed to: {current_size}")
+                    last_size = current_size
+
                 update = await asyncio.wait_for(redis_update_queue.get(), timeout=0.1)
+                logger.debug(f"Received update type: {update['type']}")
+                
+                # Process the packet
                 await data_handler.process_packet(update["packet"], update["type"])
                 redis_update_queue.task_done()
+                
             except asyncio.TimeoutError:
                 continue  # No updates available, continue polling
             except Exception as e:
-                logger.error(f"Error processing update: {e}", exc_info=True)
+                logger.error(f"Error in dispatcher: {e}", exc_info=True)
                 redis_update_queue.task_done()
+                
     except asyncio.CancelledError:
+        logger.info("Dispatcher received cancellation signal")
         # Process remaining updates during shutdown
-        while not redis_update_queue.empty():
-            update = redis_update_queue.get_nowait()
-            try:
-                await data_handler.process_packet(update["packet"], update["type"])
-            finally:
-                redis_update_queue.task_done()
-        logger.debug("Redis dispatcher completed final updates.")
+        remaining = redis_update_queue.qsize()
+        if remaining > 0:
+            logger.info(f"Processing {remaining} remaining updates during shutdown")
+            while not redis_update_queue.empty():
+                update = redis_update_queue.get_nowait()
+                try:
+                    await data_handler.process_packet(update["packet"], update["type"])
+                except Exception as e:
+                    logger.error(f"Error processing remaining update: {e}")
+                finally:
+                    redis_update_queue.task_done()
+        logger.debug("Redis dispatcher completed final updates")
         raise  # Re-raise to ensure proper task cleanup
 
 def suggest_available_ports():

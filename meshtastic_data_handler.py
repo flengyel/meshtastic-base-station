@@ -30,44 +30,58 @@ class MeshtasticDataHandler:
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
 
     async def process_packet(self, packet, packet_type: str):
-        """
-        Process a Meshtastic packet and store it in Redis.
-        
-        :param packet: Meshtastic protobuf packet
-        :param packet_type: Type of packet ('text', 'node', etc)
-        """
+        """Process a Meshtastic packet and store it in Redis."""
         try:
-            json_data = MessageToJson(packet)
+            self.logger.debug(f"Processing {packet_type} packet")
+        
+            # Convert packet to storable dictionary
+            packet_dict = self._meshpacket_to_dict(packet)  # Note the self. prefix
+            if packet_dict is None:
+                return
             
+            # Convert to JSON for storage
+            json_data = json.dumps(packet_dict)
+        
             if packet_type == 'text':
+                from_id = packet_dict['from_id']
+                message = packet_dict['decoded']['text']
+                self.logger.debug(f"Processing text message from {from_id}: {message}")
                 await self.redis.store_message(json_data)
-            elif packet_type == 'node':
-                await self.redis.store_node(json_data)
+                self.logger.info(f"Stored text message from {from_id}")
             
-            self.logger.debug(f"Processed {packet_type} packet: {json_data[:100]}...")
+            elif packet_type == 'node':
+                node_info = packet_dict['decoded']
+                node_id = packet_dict['from_id']
+                self.logger.debug(f"Processing node info for node {node_id}")
+                await self.redis.store_node(json_data)
+                self.logger.info(f"Stored node info for {node_id}")
             
         except Exception as e:
             self.logger.error(f"Error processing {packet_type} packet: {e}", exc_info=True)
 
-    async def format_message_for_display(self, json_str: str):
-        """
-        Format a JSON message string for display.
-        
-        :param json_str: JSON string to format
-        :return: Formatted message dictionary or None on error
-        """
+    def _meshpacket_to_dict(self, packet):
+        """Convert MeshPacket to storable dictionary."""
         try:
-            data = json.loads(json_str)
             return {
-                'timestamp': data.get('timestamp', datetime.now().isoformat()),
-                'from': data.get('fromId', 'Unknown'),
-                'to': data.get('toId', 'Unknown'),
-                'text': data.get('decoded', {}).get('text', '')
+                'timestamp': datetime.now().isoformat(),
+                'from_id': packet.from_id,
+                'to_id': packet.to,
+                'decoded': {
+                    'portnum': str(packet.decoded.portnum),
+                    'text': packet.decoded.text if hasattr(packet.decoded, 'text') else '',
+                },
+                'metrics': {
+                    'rx_time': packet.rx_time,
+                    'rx_snr': packet.rx_snr,
+                    'rx_rssi': packet.rx_rssi,
+                    'hop_limit': packet.hop_limit
+                },
+                'raw': packet.raw
             }
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error decoding message JSON: {e}")
+        except Exception as e:
+            self.logger.error(f"Error converting MeshPacket: {e}", exc_info=True)
             return None
-
+    
     async def format_node_for_display(self, json_str: str):
         """
         Format a JSON node string for display.
