@@ -1,30 +1,44 @@
 # Meshtastic Base Station
 
-A Python-based base station for Meshtastic devices that provides persistent storage of messages and node announcements using Redis. This project implements a lightweight, resource-efficient management system for Meshtastic networks, ensuring that even resource-constrained devices like Raspberry Pi can serve as reliable base stations.
+A Python-based base station for Meshtastic devices providing persistent storage and real-time processing of network traffic. Built on modern async Python and Redis, it implements a lightweight, resource-efficient management system suitable for 24/7 operation on devices like Raspberry Pi.
 
 ## Features
 
-- **Message Handling:** Receives and stores text messages sent through the network
-- **Node Management:** Tracks node names and their associated station IDs
-- **Persistent Storage:** Uses Redis for reliable storage of messages and node information
-- **Flexible Logging:** 
-  - Custom levels for packet and Redis operations
-  - Multiple output formats and filtering options
-  - Support for threshold or exact level matching
-- **Resource Efficient:** Designed for reliable operation on Raspberry Pi and similar devices
-- **Async Operation:** Uses asyncio for non-blocking operations and clean shutdown
-- **Extensible Design:** Architecture supports future enhancements
+- **Asynchronous Architecture:**
+  - Built on asyncio for non-blocking I/O and efficient resource usage
+  - Clean separation between network I/O, processing, and storage
+  - Graceful shutdown handling with proper resource cleanup
+  
+- **Message and Node Handling:**
+  - Real-time processing of network messages
+  - Node tracking with status updates
+  - Efficient queuing system for packet processing
+
+- **Telemetry Processing:**
+  - Device metrics (battery, voltage, channel utilization)
+  - Network statistics (node counts, packet rates)
+  - Environmental data (temperature, humidity, pressure)
+
+- **Persistent Redis Storage:**
+  - Optimized JSON storage for all packet types
+  - Separate data streams for messages, nodes, and telemetry
+  - Atomic operations for data consistency
+
+- **Flexible Logging:**
+  - Custom levels: PACKET, DATA, REDIS
+  - Multiple output formats and filtering
+  - Threshold or exact level matching
 
 ## Prerequisites
 
 ### Hardware
-- Meshtastic-compatible device with serial connection (e.g., LILYGO® T-Beam)
+- Meshtastic-compatible device with serial connection
 - Computer or Raspberry Pi running Linux (tested on Raspberry Pi 5)
 
 ### Software
 - Python 3.8+
 - Redis server
-- Required Python packages:
+- Required packages:
   ```
   redis-py-async
   meshtastic
@@ -46,7 +60,7 @@ A Python-based base station for Meshtastic devices that provides persistent stor
    pip install -r requirements.txt
    ```
 
-3. Ensure Redis server is running:
+3. Start Redis:
    ```bash
    redis-server
    ```
@@ -55,7 +69,6 @@ A Python-based base station for Meshtastic devices that provides persistent stor
 
 ### Basic Operation
 
-Start the base station with default settings:
 ```bash
 python mesh_console.py
 ```
@@ -71,105 +84,93 @@ options:
   --device DEVICE  Serial interface device (default: /dev/ttyACM0)
 
 Logging Options:
-  --log LOG        Comma-separated list of log levels to include
+  --log LOG        Comma-separated list of log levels
   --threshold      Treat log level as threshold
   --no-file-logging
                    Disable logging to file
 
 Other Options:
   --display-redis  Display Redis data and exit
-  --debugging      Print diagnostic debugging statements
+  --debugging      Print diagnostic statements
 ```
 
 ### Example Commands
 
-Show only packet data:
+View packet data:
 ```bash
 python mesh_console.py --log PACKET
 ```
 
-Enable debug mode without file logging:
+Monitor telemetry:
 ```bash
-python mesh_console.py --log DEBUG --threshold --no-file-logging
+python mesh_console.py --log DATA
 ```
 
 Display stored data:
 ```bash
-python mesh_console.py --display-redis --log INFO,REDIS
+python mesh_console.py --display-redis
 ```
 
 ### Log Levels
-- Standard levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
-- Custom levels: PACKET (for mesh traffic), REDIS (for storage operations)
+- Standard: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- Custom: PACKET (mesh traffic), DATA (telemetry), REDIS (storage)
 
 ### Redis Data Structure
 
-The base station uses the following Redis keys:
+```
+meshtastic:messages               # Text messages
+meshtastic:nodes                 # Node information
+meshtastic:telemetry:device      # Device metrics
+meshtastic:telemetry:network     # Network statistics
+meshtastic:telemetry:environment # Environmental readings
+```
 
-- **meshtastic:nodes**
-  - Hash mapping station IDs to node names
-  - Example: `HGET meshtastic:nodes !abcd1234`
-
-- **meshtastic:nodes:timestamps**
-  - Hash mapping station IDs to last seen timestamps
-  - Example: `HGET meshtastic:nodes:timestamps !abcd1234`
-
-- **meshtastic:messages**
-  - List containing JSON-formatted messages with:
-    - timestamp
-    - station_id
-    - message
-    - to_id (recipient)
+Messages and telemetry are stored as JSON, preserving complete packet information for analysis and replay.
 
 ### Redis CLI Examples
 
-View all nodes:
+View recent telemetry:
+```bash
+redis-cli LRANGE meshtastic:telemetry:device 0 10
+```
+
+Check node status:
 ```bash
 redis-cli HGETALL meshtastic:nodes
 ```
 
-Delete specific node:
-```bash
-redis-cli HDEL meshtastic:nodes <station_id>
-redis-cli HDEL meshtastic:nodes:timestamps <station_id>
-```
-
 ## Architecture
 
-The project consists of several key components:
+The project uses modern Python async patterns and Redis for efficient data handling:
 
-- `mesh_console.py`: Main application entry point and CLI interface
-- `redis_handler.py`: Minimal Redis storage operations
-- `meshtastic_data_handler.py`: Processes Meshtastic packets and JSON conversion
-- `logger.py`: Configurable logging system
-- `log_level_filter.py`: Custom log filtering
+- **Async Core:**
+  - `mesh_console.py`: Entry point and async event loop
+  - `redis_handler.py`: Async Redis operations
+  - `meshtastic_data_handler.py`: Packet processing
 
-### Data Flow
-
-1. Meshtastic device sends messages/announcements
-2. Callbacks capture and queue the packets
-3. Redis dispatcher processes queued packets
-4. MeshtasticDataHandler converts packets to JSON
-5. RedisHandler stores JSON in Redis
-6. Data persists for future retrieval
+- **Data Flow:**
+  1. Async packet reception
+  2. Non-blocking queue processing
+  3. JSON conversion
+  4. Atomic Redis storage
+  5. Persistent data retrieval
 
 ## Future Development
 
-### Planned Features
-- GUI interface with scrollable displays for nodes and messages
-- RSSI (signal strength) monitoring and visualization
-- Geographic position tracking and mapping
-- Integration with web interfaces (e.g., Leaflet maps via Flask)
-- Enhanced device configuration capabilities
-- Extended node metrics (battery, position, etc.)
+- Kivy-based GUI interface
+- RSSI visualization
+- Geographic tracking
+- Web interface integration
+- Enhanced configuration
+- Extended metrics
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+Contributions welcome! Submit issues or pull requests via GitHub.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.html) for details.
+GNU General Public License v3.0 - see [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Acknowledgments
 
