@@ -39,8 +39,9 @@ class RedisHandler:
         self.keys = {
             'messages': 'meshtastic:messages',
             'nodes': 'meshtastic:nodes',
-            'device_telemetry': 'meshtastic:telemetry:device'  
-            'network_telemetry': 'meshtastic:telemetry:network' 
+            'device_telemetry': 'meshtastic:telemetry:device',
+            'network_telemetry': 'meshtastic:telemetry:network',
+            'environment_telemetry': 'meshtastic:telemetry:environment'
         }
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
@@ -126,6 +127,15 @@ class RedisHandler:
     async def load_network_telemetry(self, limit: int = -1):
         """Load network telemetry data."""
         return await self.load(self.keys['network_telemetry'], 0, limit)
+
+    async def store_environment_telemetry(self, json_telemetry: str):
+        """Store environment telemetry data."""
+        self.logger.debug(f"Storing environment telemetry: {json_telemetry[:200]}...")
+        await self.store(self.keys['environment_telemetry'], json_telemetry)
+
+    async def load_environment_telemetry(self, limit: int = -1):
+        """Load environment telemetry data."""
+        return await self.load(self.keys['environment_telemetry'], 0, limit)
 
     async def close(self):
         """Close Redis connection."""

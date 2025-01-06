@@ -100,14 +100,36 @@ class NetworkTelemetry(TypedDict):
     priority: Optional[str]
     raw: str
 
+class EnvironmentMetrics(TypedDict):
+    """Environment telemetry metrics."""
+    temperature: float
+    relative_humidity: float
+    barometric_pressure: float
+    gas_resistance: float
+    iaq: int
+
+class EnvironmentTelemetry(TypedDict):
+    """Environment telemetry packet."""
+    type: Literal['environment_telemetry']
+    timestamp: str
+    from_num: int
+    from_id: str
+    environment_metrics: EnvironmentMetrics
+    metrics: Metrics
+    priority: Optional[str]
+    raw: str
+
+
 # Union type for all possible packet types
-MeshtasticPacket = Union[NodeInfo, TextMessage, DeviceTelemetry, NetworkTelemetry]
+MeshtasticPacket = Union[NodeInfo, TextMessage, DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry]
+
+
 
 # Dictionary mapping packet types to their TypedDict classes
 PACKET_TYPES: Dict[str, type] = {
     'NODEINFO_APP': NodeInfo,
     'TEXT_MESSAGE_APP': TextMessage,
-    'TELEMETRY_APP': Union[DeviceTelemetry, NetworkTelemetry]
+    'TELEMETRY_APP': Union[DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry]
 }
 
 

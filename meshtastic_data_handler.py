@@ -22,7 +22,7 @@ from typing import TypedDict, Optional, Dict, Any
 import typing
 from meshtastic_types import (
     Metrics, UserInfo, NodeInfo, TextMessage,
-    DeviceTelemetry, NetworkTelemetry,  
+    DeviceTelemetry, NetworkTelemetry, EnvironmentTelementry,
     MeshtasticPacket, PACKET_TYPES
 )
 from type_validation import validate_typed_dict
@@ -86,15 +86,33 @@ class MeshtasticDataHandler:
 
     async def _handle_telemetry(self, packet: Dict[str, Any]) -> None:
         """Handle TELEMETRY_APP packets."""
-        telemetry = packet['decoded']['telemetry']
-        if 'deviceMetrics' in telemetry:
-            await self._handle_device_telemetry(packet)
-        elif 'localStats' in telemetry:
-            await self._handle_network_telemetry(packet)
-        else:
-            self.logger.warning(f"Unknown telemetry type in packet: {packet}")
+        try:
+            telemetry = packet['decoded']['telemetry']
+            if 'deviceMetrics' in telemetry:
+                await self._handle_device_telemetry(packet)
+            elif 'localStats' in telemetry:
+                await self._handle_network_telemetry(packet)
+            elif 'environmentMetrics' in telemetry:
+                await self._handle_environment_telemetry(packet)
+            else:
+                self.logger.warning(f"Unknown telemetry type in packet: {packet}")
+        except Exception as e:
+            self.logger.error(f"Error handling telemetry packet: {e}", exc_info=True)
 
-async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
+    async def _handle_environment_telemetry(self, packet: Dict[str, Any]) -> None:
+       """Handle environment telemetry packets."""
+       processed = self._process_environment_telemetry(packet)
+       await self.redis.store_environment_telemetry(json.dumps(processed))
+       metrics = processed['environment_metrics']
+       self.logger.info(
+           f"[{processed['timestamp']}] Environment telemetry from {processed['from_id']}: "
+           f"temp={metrics['temperature']:.1f}°C, "
+           f"humidity={metrics['relative_humidity']:.1f}%, "
+           f"pressure={metrics['barometric_pressure']:.1f}hPa"
+       )
+
+
+    async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
         """Handle device telemetry packets."""
         processed = self._process_device_telemetry(packet)
         await self.redis.store_device_telemetry(json.dumps(processed))
@@ -255,6 +273,28 @@ async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
             self.logger.error(f"Error processing network telemetry: {e}", exc_info=True)
             raise 
 
+    def _process_environment_telemetry(self, packet: Dict[str, Any]) -> EnvironmentTelemetry:
+        telemetry = packet['decoded']['telemetry']
+        env_metrics = telemetry['environmentMetrics']
+    
+        environment_telemetry: EnvironmentTelemetry = {
+            'type': 'environment_telemetry',
+            'timestamp': datetime.now().isoformat(),
+            'from_num': int(packet['from']),
+            'from_id': str(packet['fromId']),
+            'environment_metrics': {
+                'temperature': float(env_metrics['temperature']),
+                'relative_humidity': float(env_metrics['relativeHumidity']),
+                'barometric_pressure': float(env_metrics['barometricPressure']),
+                'gas_resistance': float(env_metrics['gasResistance']),
+                'iaq': int(env_metrics['iaq'])
+            },
+            'metrics': self._extract_metrics(packet),
+            'priority': packet.get('priority'),
+            'raw': str(packet['raw'])
+        }
+        validate_typed_dict(environment_telemetry, EnvironmentTelemetry)
+        return environment_telemetry
 
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON message string for display."""
@@ -311,4 +351,32 @@ async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
         
         return formatted
 
+    async def format_environment_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
+        """Format environment telemetry for display."""
+        try:
+            data = json.loads(json_str)
+            metrics = data['environment_metrics']
+            return {
+                'timestamp': data['timestamp'],
+                'from_id': data['from_id'],
+                'temperature': f"{metrics['temperature']:.1f}°C",
+                'humidity': f"{metrics['relative_humidity']:.1f}%",
+                'pressure': f"{metrics['barometric_pressure']:.1f}hPa"
+            }
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding environment telemetry JSON: {e}")
+            return None
 
+    async def get_formatted_environment_telemetry(self, limit: int = -1) -> list:
+        """Get formatted environment telemetry for display."""
+        self.logger.debug("Retrieving formatted environment telemetry")
+        telemetry = await self.redis.load_environment_telemetry(limit)
+        self.logger.debug(f"Found {len(telemetry)} environment telemetry records")
+    
+        formatted = []
+        for entry in telemetry:
+            fmt_entry = await self.format_environment_telemetry_for_display(entry)
+            if fmt_entry:
+                formatted.append(fmt_entry)
+    
+        return formatted
