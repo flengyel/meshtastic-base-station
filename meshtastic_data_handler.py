@@ -70,7 +70,7 @@ class MeshtasticDataHandler:
         """Handle NODEINFO_APP packets."""
         processed = self._process_nodeinfo(packet)
         await self.redis.store_node(json.dumps(processed))
-        self.logger.info(f"Stored node info for {processed['from_id']}")
+        self.logger.data(f"Stored node info for {processed['from_id']}")
         self.logger.info(
             f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['long_name']}"
         )
@@ -79,7 +79,7 @@ class MeshtasticDataHandler:
         """Handle TEXT_MESSAGE_APP packets."""
         processed = self._process_textmessage(packet)
         await self.redis.store_message(json.dumps(processed))
-        self.logger.info(f"Stored text message from {processed['from_id']}")
+        self.logger.data(f"Stored text message from {processed['from_id']}")
         self.logger.info(
             f"[{processed['timestamp']}] {processed['from_id']} -> {processed['to_id']}: {processed['text']}"
         )
@@ -104,7 +104,7 @@ class MeshtasticDataHandler:
        processed = self._process_environment_telemetry(packet)
        await self.redis.store_environment_telemetry(json.dumps(processed))
        metrics = processed['environment_metrics']
-       self.logger.info(
+       self.logger.data(
            f"[{processed['timestamp']}] Environment telemetry from {processed['from_id']}: "
            f"temp={metrics['temperature']:.1f}°C, "
            f"humidity={metrics['relative_humidity']:.1f}%, "
@@ -116,7 +116,7 @@ class MeshtasticDataHandler:
         """Handle device telemetry packets."""
         processed = self._process_device_telemetry(packet)
         await self.redis.store_device_telemetry(json.dumps(processed))
-        self.logger.info(
+        self.logger.data(
             f"[{processed['timestamp']}] Device telemetry from {processed['from_id']}: "
             f"battery={processed['device_metrics']['battery_level']}%, "
             f"voltage={processed['device_metrics']['voltage']:.2f}V"
@@ -127,7 +127,7 @@ class MeshtasticDataHandler:
         processed = self._process_network_telemetry(packet)
         await self.redis.store_network_telemetry(json.dumps(processed))
         stats = processed['local_stats']
-        self.logger.info(
+        self.logger.data(
             f"[{processed['timestamp']}] Network telemetry from {processed['from_id']}: "
             f"online={stats['num_online_nodes']}/{stats['num_total_nodes']} nodes, "
             f"tx={stats['num_packets_tx']}, rx={stats['num_packets_rx']}"
@@ -296,6 +296,33 @@ class MeshtasticDataHandler:
         validate_typed_dict(environment_telemetry, EnvironmentTelemetry)
         return environment_telemetry
 
+    async def format_node_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
+        """Format a JSON node string for display."""
+        try:
+            data = json.loads(json_str)
+            return {
+                'timestamp': data['timestamp'],
+                'id': data['from_id'],
+                'name': data['user']['long_name']
+            }
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding node JSON: {e}")
+            return None
+
+    async def get_formatted_nodes(self, limit: int = -1) -> list:
+        """Get formatted nodes for display."""
+        self.logger.debug("Retrieving formatted nodes")
+        nodes = await self.redis.load_nodes(limit)
+        self.logger.debug(f"Found {len(nodes)} nodes")
+        
+        formatted = []
+        for node in nodes:
+            fmt_node = await self.format_node_for_display(node)
+            if fmt_node:
+                formatted.append(fmt_node)
+        
+        return formatted
+
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON message string for display."""
         try:
@@ -310,19 +337,6 @@ class MeshtasticDataHandler:
             self.logger.error(f"Error decoding message JSON: {e}")
             return None
 
-    async def format_node_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
-        """Format a JSON node string for display."""
-        try:
-            data = json.loads(json_str)
-            return {
-                'timestamp': data['timestamp'],
-                'id': data['from_id'],
-                'name': data['user']['long_name']
-            }
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error decoding node JSON: {e}")
-            return None
-
     async def get_formatted_messages(self, limit: int = -1) -> list:
         """Get formatted messages for display."""
         self.logger.debug("Retrieving formatted messages")
@@ -334,20 +348,6 @@ class MeshtasticDataHandler:
             fmt_msg = await self.format_message_for_display(msg)
             if fmt_msg:
                 formatted.append(fmt_msg)
-        
-        return formatted
-
-    async def get_formatted_nodes(self, limit: int = -1) -> list:
-        """Get formatted nodes for display."""
-        self.logger.debug("Retrieving formatted nodes")
-        nodes = await self.redis.load_nodes(limit)
-        self.logger.debug(f"Found {len(nodes)} nodes")
-        
-        formatted = []
-        for node in nodes:
-            fmt_node = await self.format_node_for_display(node)
-            if fmt_node:
-                formatted.append(fmt_node)
         
         return formatted
 
@@ -380,3 +380,66 @@ class MeshtasticDataHandler:
                 formatted.append(fmt_entry)
     
         return formatted
+
+    async def format_device_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
+        """Format device telemetry for display."""
+        try:
+            data = json.loads(json_str)
+            metrics = data['device_metrics']
+            return {
+                'timestamp': data['timestamp'],
+                'from_id': data['from_id'],
+                'battery': str(metrics['battery_level']),
+                'voltage': f"{metrics['voltage']:.2f}",
+                'channel_util': f"{metrics.get('channel_utilization', 0):.2f}",
+                'air_util': f"{metrics['air_util_tx']:.2f}"
+            }
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding device telemetry JSON: {e}")
+            return None
+
+    async def get_formatted_device_telemetry(self, limit: int = -1) -> list:
+        """Get formatted device telemetry for display."""
+        self.logger.debug("Retrieving formatted device telemetry")
+        telemetry = await self.redis.load_device_telemetry(limit)
+        self.logger.debug(f"Found {len(telemetry)} device telemetry records")
+        
+        formatted = []
+        for entry in telemetry:
+            fmt_entry = await self.format_device_telemetry_for_display(entry)
+            if fmt_entry:
+                formatted.append(fmt_entry)
+        return formatted
+
+    async def format_network_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
+        """Format network telemetry for display."""
+        try:
+            data = json.loads(json_str)
+            stats = data['local_stats']
+            return {
+                'timestamp': data['timestamp'],
+                'from_id': data['from_id'],
+                'online_nodes': str(stats['num_online_nodes']),
+                'total_nodes': str(stats['num_total_nodes']),
+                'packets_tx': str(stats['num_packets_tx']),
+                'packets_rx': str(stats['num_packets_rx']),
+                'packets_rx_bad': str(stats['num_packets_rx_bad'])
+            }
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding network telemetry JSON: {e}")
+            return None
+
+    async def get_formatted_network_telemetry(self, limit: int = -1) -> list:
+        """Get formatted network telemetry for display."""
+        self.logger.debug("Retrieving formatted network telemetry")
+        telemetry = await self.redis.load_network_telemetry(limit)
+        self.logger.debug(f"Found {len(telemetry)} network telemetry records")
+        
+        formatted = []
+        for entry in telemetry:
+            fmt_entry = await self.format_network_telemetry_for_display(entry)
+            if fmt_entry:
+                formatted.append(fmt_entry)
+        return formatted
+
+

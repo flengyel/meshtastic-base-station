@@ -21,11 +21,13 @@ from typing import Union, List, Optional
 # Custom log levels 
 # PACKET will show REDIS but not conversely
 PACKET_LEVEL = 15
-REDIS_LEVEL = 17
+DATA_LEVEL   = 16
+REDIS_LEVEL  = 17
 
 # Map level names to values
 CUSTOM_LEVELS = {
     "PACKET": PACKET_LEVEL,
+    "DATA": DATA_LEVEL,
     "REDIS": REDIS_LEVEL
 }
 
@@ -37,12 +39,17 @@ def add_custom_log_levels():
     def packet(self, message, *args, **kwargs):
         if self.isEnabledFor(PACKET_LEVEL):
             self._log(PACKET_LEVEL, message, args, **kwargs)
+    
+    def data(self, message, *args, **kwargs):
+        if self.isEnabledFor(DATA_LEVEL):
+            self._log(DATA_LEVEL, message, args, **kwargs)
 
     def redis(self, message, *args, **kwargs):
         if self.isEnabledFor(REDIS_LEVEL):
             self._log(REDIS_LEVEL, message, args, **kwargs)
 
     logging.Logger.packet = packet
+    logging.Logger.data   = data
     logging.Logger.redis = redis
 
 # Add custom levels before they're used

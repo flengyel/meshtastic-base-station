@@ -90,6 +90,7 @@ Examples:
 
 async def display_stored_data(data_handler):
     """Display previously stored data."""
+    # Display nodes
     logger.info("--- Previously Saved Nodes ---")
     nodes = await data_handler.get_formatted_nodes()
     if not nodes:
@@ -98,6 +99,7 @@ async def display_stored_data(data_handler):
         for node in sorted(nodes, key=lambda x: x['timestamp']):
             logger.info(f"[{node['timestamp']}] Node {node['id']}: {node['name']}")
 
+    # Display messages
     logger.info("\n--- Previously Saved Messages ---")
     messages = await data_handler.get_formatted_messages()
     if not messages:
@@ -105,6 +107,24 @@ async def display_stored_data(data_handler):
     else:
         for msg in sorted(messages, key=lambda x: x['timestamp']):
             logger.info(f"[{msg['timestamp']}] {msg['from']} -> {msg['to']}: {msg['text']}")
+
+    # Display device telemetry
+    logger.info("\n--- Previously Saved Device Telemetry ---")
+    device_telemetry = await data_handler.get_formatted_device_telemetry()
+    if not device_telemetry:
+        logger.info("[No device telemetry found]")
+    else:
+        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-10:]:  # Last 10 entries
+            logger.info(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
+
+    # Display network telemetry
+    logger.info("\n--- Previously Saved Network Telemetry ---")
+    network_telemetry = await data_handler.get_formatted_network_telemetry()
+    if not network_telemetry:
+        logger.info("[No network telemetry found]")
+    else:
+        for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-5:]:  # Last 5 entries
+            logger.info(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
 
 def on_text_message(packet, interface):
     """Callback for text messages."""
