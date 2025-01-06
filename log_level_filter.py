@@ -41,8 +41,8 @@ class LogLevelFilter(logging.Filter):
         :param record: The log record to check
         :return: True if the record should be logged
         """
-        if self.threshold:
+        if self.threshold: # if threshold, show all above min
             return record.levelno >= self._min_level
-        return record.levelno in self.levels
+        return record.levelno in self.levels # otherwise only those specified
 
 

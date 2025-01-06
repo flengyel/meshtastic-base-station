@@ -18,7 +18,8 @@
 import logging
 from typing import Union, List, Optional
 
-# Custom log levels
+# Custom log levels 
+# PACKET will show REDIS but not conversely
 PACKET_LEVEL = 15
 REDIS_LEVEL = 17
 

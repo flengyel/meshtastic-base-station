@@ -44,6 +44,78 @@ class MeshtasticDataHandler:
         self.redis = redis_handler
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
 
+        # Dispatch table for packet types
+        self.packet_handlers = {
+            'NODEINFO_APP': self._handle_nodeinfo,
+            'TEXT_MESSAGE_APP': self._handle_text,
+            'TELEMETRY_APP': self._handle_telemetry
+        }
+
+    async def process_packet(self, packet: Dict[str, Any], packet_type: str) -> None:
+        """Dispatch packet to appropriate handler based on portnum."""
+        try:
+            self.logger.debug(f"Processing {packet_type} packet")
+            portnum = packet['decoded']['portnum']
+            
+            handler = self.packet_handlers.get(portnum)
+            if handler:
+                await handler(packet)
+            else:
+                self.logger.warning(f"Unknown packet type: {portnum}")
+
+        except Exception as e:
+            self.logger.error(f"Error processing {packet_type} packet: {e}", exc_info=True)
+
+    async def _handle_nodeinfo(self, packet: Dict[str, Any]) -> None:
+        """Handle NODEINFO_APP packets."""
+        processed = self._process_nodeinfo(packet)
+        await self.redis.store_node(json.dumps(processed))
+        self.logger.info(f"Stored node info for {processed['from_id']}")
+        self.logger.info(
+            f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['long_name']}"
+        )
+
+    async def _handle_text(self, packet: Dict[str, Any]) -> None:
+        """Handle TEXT_MESSAGE_APP packets."""
+        processed = self._process_textmessage(packet)
+        await self.redis.store_message(json.dumps(processed))
+        self.logger.info(f"Stored text message from {processed['from_id']}")
+        self.logger.info(
+            f"[{processed['timestamp']}] {processed['from_id']} -> {processed['to_id']}: {processed['text']}"
+        )
+
+    async def _handle_telemetry(self, packet: Dict[str, Any]) -> None:
+        """Handle TELEMETRY_APP packets."""
+        telemetry = packet['decoded']['telemetry']
+        if 'deviceMetrics' in telemetry:
+            await self._handle_device_telemetry(packet)
+        elif 'localStats' in telemetry:
+            await self._handle_network_telemetry(packet)
+        else:
+            self.logger.warning(f"Unknown telemetry type in packet: {packet}")
+
+async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
+        """Handle device telemetry packets."""
+        processed = self._process_device_telemetry(packet)
+        await self.redis.store_device_telemetry(json.dumps(processed))
+        self.logger.info(
+            f"[{processed['timestamp']}] Device telemetry from {processed['from_id']}: "
+            f"battery={processed['device_metrics']['battery_level']}%, "
+            f"voltage={processed['device_metrics']['voltage']:.2f}V"
+        )
+
+    async def _handle_network_telemetry(self, packet: Dict[str, Any]) -> None:
+        """Handle network telemetry packets."""
+        processed = self._process_network_telemetry(packet)
+        await self.redis.store_network_telemetry(json.dumps(processed))
+        stats = processed['local_stats']
+        self.logger.info(
+            f"[{processed['timestamp']}] Network telemetry from {processed['from_id']}: "
+            f"online={stats['num_online_nodes']}/{stats['num_total_nodes']} nodes, "
+            f"tx={stats['num_packets_tx']}, rx={stats['num_packets_rx']}"
+        )
+
+
     def _extract_metrics(self, packet: Dict[str, Any]) -> Metrics:
         """
         Extract network metrics from a packet.
@@ -55,19 +127,17 @@ class MeshtasticDataHandler:
             Metrics dictionary with optional fields
         """
         return {
-            'rx_time': packet['rxTime'],
-            'rx_snr': packet.get('rxSnr'),     # Optional
-            'rx_rssi': packet.get('rxRssi'),   # Optional
-            'hop_limit': packet.get('hopLimit', 3)  # Default to 3 if not present
+            'rx_time': int(packet['rxTime']),
+            'rx_snr': float(packet.get('rxSnr', 0)),     # Optional
+            'rx_rssi': int(packet.get('rxRssi', 0)),     # Optional
+            'hop_limit': int(packet.get('hopLimit', 3))  # Default to 3 if not present
         }
-
 
     def _process_nodeinfo(self, packet: Dict[str, Any]) -> NodeInfo:
         """Process NODEINFO_APP packet."""
         try:
             user_info = dict(packet['decoded']['user'])
-        
-            node_info = {
+            node_info: NodeInfo = {
                 'type': 'nodeinfo',
                 'timestamp': datetime.now().isoformat(),
                 'from_num': int(packet['from']),
@@ -80,38 +150,17 @@ class MeshtasticDataHandler:
                     'hw_model': str(user_info['hwModel']),
                     'raw': str(user_info['raw'])
                 },
-                'metrics': {
-                    'rx_time': int(packet['rxTime']),
-                    'rx_snr': float(packet.get('rxSnr', 0)),
-                    'rx_rssi': int(packet.get('rxRssi', 0)),
-                    'hop_limit': int(packet.get('hopLimit', 3))
-                },
+                'metrics': self._extract_metrics(packet),
                 'raw': str(packet['raw'])
             }
-        
-            # Validate against NodeInfo TypedDict
             validate_typed_dict(node_info, NodeInfo)
-            self.logger.debug(f"Validated node_info structure: {node_info}")
-        
             return node_info
-
-        except ValueError as e:
-            self.logger.error(f"Node info validation failed: {e}")
-            raise
         except Exception as e:
             self.logger.error(f"Error processing node info: {e}", exc_info=True)
             raise
 
     def _process_textmessage(self, packet: Dict[str, Any]) -> TextMessage:
-        """
-        Process TEXT_MESSAGE_APP packet.
-
-        Args:
-            packet: Raw packet dictionary
-
-        Returns:
-            TextMessage dictionary with proper typing
-        """
+        """Process TEXT_MESSAGE_APP packet."""
         try:
             text_message: TextMessage = {
                 'type': 'text',
@@ -121,21 +170,11 @@ class MeshtasticDataHandler:
                 'to_num': int(packet['to']),
                 'to_id': str(packet['toId']),
                 'text': str(packet['decoded']['text']),
-                'metrics': {
-                    'rx_time': int(packet['rxTime']),
-                    'rx_snr': float(packet.get('rxSnr', 0)),
-                    'rx_rssi': int(packet.get('rxRssi', 0)),
-                    'hop_limit': int(packet.get('hopLimit', 3))
-                },
+                'metrics': self._extract_metrics(packet),
                 'raw': str(packet['raw'])
             }
-        
-            # Validate against TextMessage TypedDict
             validate_typed_dict(text_message, TextMessage)
-            self.logger.debug(f"Validated text_message structure: {text_message}")
-        
             return text_message
-
         except Exception as e:
             self.logger.error(f"Error processing text message: {e}", exc_info=True)
             raise
@@ -143,71 +182,78 @@ class MeshtasticDataHandler:
     def _process_device_telemetry(self, packet: Dict[str, Any]) -> DeviceTelemetry:
         """
         Process device telemetry packet.
+
+        Args:
+            packet: Raw packet dictionary
+
+        Returns:
+            DeviceTelemetry dictionary
         """
         try:
             telemetry = packet['decoded']['telemetry']
+            device_metrics = telemetry['deviceMetrics']
             device_telemetry: DeviceTelemetry = {
                 'type': 'device_telemetry',
                 'timestamp': datetime.now().isoformat(),
                 'from_num': int(packet['from']),
                 'from_id': str(packet['fromId']),
                 'device_metrics': {
-                    'battery_level': int(telemetry['deviceMetrics']['batteryLevel']),
-                    'voltage': float(telemetry['deviceMetrics']['voltage']),
-                    'channel_utilization': float(telemetry['deviceMetrics'].get('channelUtilization', 0.0)),
-                    'air_util_tx': float(telemetry['deviceMetrics']['airUtilTx']),
-                    'uptime_seconds': int(telemetry['deviceMetrics']['uptimeSeconds'])
+                    'battery_level': int(device_metrics['batteryLevel']),
+                    'voltage': float(device_metrics['voltage']),
+                    'channel_utilization': float(device_metrics.get('channelUtilization', 0.0)),
+                    'air_util_tx': float(device_metrics['airUtilTx']),
+                    'uptime_seconds': int(device_metrics['uptimeSeconds'])
                 },
                 'metrics': self._extract_metrics(packet),
+                'priority': packet.get('priority'),
                 'raw': str(packet['raw'])
             }
-            
             validate_typed_dict(device_telemetry, DeviceTelemetry)
-            self.logger.debug(f"Validated device telemetry structure: {device_telemetry}")
-            
             return device_telemetry
-    
         except Exception as e:
             self.logger.error(f"Error processing device telemetry: {e}", exc_info=True)
             raise
 
-
-    async def process_packet(self, packet: Dict[str, Any], packet_type: str) -> None:
+    def _process_network_telemetry(self, packet: Dict[str, Any]) -> NetworkTelemetry:
         """
-        Process a Meshtastic packet and store it in Redis.
-
+        Process network telemetry packet.
+    
         Args:
             packet: Raw packet dictionary
-            packet_type: Type of packet ('text' or 'node')
+    
+        Returns:
+            NetworkTelemetry dictionary
         """
         try:
-            self.logger.debug(f"Processing {packet_type} packet")
-    
-            # Convert based on packet type
-            portnum = packet['decoded']['portnum']
-            if portnum == 'NODEINFO_APP':
-                processed = self._process_nodeinfo(packet)
-                await self.redis.store_node(json.dumps(processed))
-                self.logger.info(f"Stored node info for {processed['from_id']}")
-                # Display node info immediately
-                self.logger.info(
-                    f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['long_name']}"
-                )
-
-            elif portnum == 'TEXT_MESSAGE_APP':
-                processed = self._process_textmessage(packet)
-                await self.redis.store_message(json.dumps(processed))
-                self.logger.info(f"Stored text message from {processed['from_id']}")
-                # Display message immediately
-                self.logger.info(
-                    f"[{processed['timestamp']}] {processed['from_id']} -> {processed['to_id']}: {processed['text']}"
-                )
-
-            else:
-                self.logger.warning(f"Unknown packet type: {portnum}")
-
+            telemetry = packet['decoded']['telemetry']
+            local_stats = telemetry['localStats']
+            network_telemetry: NetworkTelemetry = {
+                'type': 'network_telemetry',
+                'timestamp': datetime.now().isoformat(),
+                'from_num': int(packet['from']),
+                'from_id': str(packet['fromId']),
+                'local_stats': {
+                    'uptime_seconds': int(local_stats['uptimeSeconds']),
+                    'channel_utilization': float(local_stats['channelUtilization']),
+                    'air_util_tx': float(local_stats['airUtilTx']),
+                    'num_packets_tx': int(local_stats['numPacketsTx']),
+                    'num_packets_rx': int(local_stats['numPacketsRx']),
+                    'num_packets_rx_bad': int(local_stats['numPacketsRxBad']),
+                    'num_online_nodes': int(local_stats['numOnlineNodes']),
+                    'num_total_nodes': int(local_stats['numTotalNodes']),
+                    'num_rx_dupe': local_stats.get('numRxDupe'),
+                    'num_tx_relay': local_stats.get('numTxRelay'),
+                    'num_tx_relay_canceled': local_stats.get('numTxRelayCanceled')
+                },
+                'metrics': self._extract_metrics(packet),
+                'priority': packet.get('priority'),
+                'raw': str(packet['raw'])
+            }
+            validate_typed_dict(network_telemetry, NetworkTelemetry)
+            return network_telemetry
         except Exception as e:
-            self.logger.error(f"Error processing {packet_type} packet: {e}", exc_info=True)
+            self.logger.error(f"Error processing network telemetry: {e}", exc_info=True)
+            raise 
 
 
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
