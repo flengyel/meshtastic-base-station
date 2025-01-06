@@ -22,7 +22,7 @@ from typing import TypedDict, Optional, Dict, Any
 import typing
 from meshtastic_types import (
     Metrics, UserInfo, NodeInfo, TextMessage,
-    DeviceTelemetry, NetworkTelemetry, EnvironmentTelementry,
+    DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry,
     MeshtasticPacket, PACKET_TYPES
 )
 from type_validation import validate_typed_dict
