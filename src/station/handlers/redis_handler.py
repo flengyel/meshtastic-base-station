@@ -46,30 +46,32 @@ class RedisHandler:
         }
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
-    async def verify_connection(self):
-        """Verify Redis connection is working."""
+    async def verify_connection(self) -> bool:
+        """
+        Verify Redis connection is working.
+        Returns:
+            bool: True if connection successful, False otherwise
+        """
         try:
             self.logger.debug("Testing Redis connection...")
             result = await self.client.ping()
             if result:
                 self.logger.info(f"Redis connection test successful")
-                # Let's check if our keys exist
+                # Check our keys exist
                 for key_name, key_path in self.keys.items():
                     length = await self.client.llen(key_path)
                     self.logger.debug(f"Key {key_path} has {length} entries")
-                self.connection_verified = True
+                return True
             else:
                 self.logger.error("Redis connection test failed: ping returned False")
-                self.connection_verified = False
-            return result
-        except redis.ConnectionError as e:
-            self.logger.error(f"Redis connection error: {e}", exc_info=True)
-            self.connection_verified = False
-            raise
+                return False
+        except redis.exceptions.ConnectionError:
+            self.logger.error(f"Redis connection error connecting to {self.client.connection_pool.connection_kwargs['host']}:"
+                             f"{self.client.connection_pool.connection_kwargs['port']}")
+            return False
         except Exception as e:
-            self.logger.error(f"Redis connection test failed: {e}", exc_info=True)
-            self.connection_verified = False
-            raise
+            self.logger.error(f"Unexpected Redis error: {e}")
+            return False
 
     async def store(self, key: str, data: str):
         """
