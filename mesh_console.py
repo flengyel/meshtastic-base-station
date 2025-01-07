@@ -67,7 +67,12 @@ Examples:
         type=int,
         help="Redis port (overrides config)"
     )
-    
+    parser.add_argument(
+        "--display-redis",
+        action="store_true",
+        help="Display Redis data and exit without connecting to the serial device"
+    )
+
     # Existing logging configuration
     log_group = parser.add_argument_group('Logging Options')
     log_group.add_argument(
