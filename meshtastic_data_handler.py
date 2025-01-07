@@ -18,8 +18,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import TypedDict, Optional, Dict, Any 
-import typing
+from typing import Optional, Dict, Any 
 from meshtastic_types import (
     Metrics, UserInfo, NodeInfo, TextMessage,
     DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry,
@@ -245,20 +244,21 @@ class MeshtasticDataHandler:
         try:
             telemetry = packet['decoded']['telemetry']
             local_stats = telemetry['localStats']
+        
             network_telemetry: NetworkTelemetry = {
                 'type': 'network_telemetry',
                 'timestamp': datetime.now().isoformat(),
                 'from_num': int(packet['from']),
                 'from_id': str(packet['fromId']),
                 'local_stats': {
-                    'uptime_seconds': int(local_stats['uptimeSeconds']),
-                    'channel_utilization': float(local_stats['channelUtilization']),
-                    'air_util_tx': float(local_stats['airUtilTx']),
-                    'num_packets_tx': int(local_stats['numPacketsTx']),
-                    'num_packets_rx': int(local_stats['numPacketsRx']),
-                    'num_packets_rx_bad': int(local_stats['numPacketsRxBad']),
-                    'num_online_nodes': int(local_stats['numOnlineNodes']),
-                    'num_total_nodes': int(local_stats['numTotalNodes']),
+                    'uptime_seconds': int(local_stats.get('uptimeSeconds', 0)),
+                    'channel_utilization': float(local_stats.get('channelUtilization', 0.0)),
+                    'air_util_tx': float(local_stats.get('airUtilTx', 0.0)),
+                    'num_packets_tx': int(local_stats.get('numPacketsTx', 0)),
+                    'num_packets_rx': int(local_stats.get('numPacketsRx', 0)),
+                    'num_packets_rx_bad': int(local_stats.get('numPacketsRxBad', 0)),
+                    'num_online_nodes': int(local_stats.get('numOnlineNodes', 0)),
+                    'num_total_nodes': int(local_stats.get('numTotalNodes', 0)),
                     'num_rx_dupe': local_stats.get('numRxDupe'),
                     'num_tx_relay': local_stats.get('numTxRelay'),
                     'num_tx_relay_canceled': local_stats.get('numTxRelayCanceled')
@@ -267,12 +267,13 @@ class MeshtasticDataHandler:
                 'priority': packet.get('priority'),
                 'raw': str(packet['raw'])
             }
+        
             validate_typed_dict(network_telemetry, NetworkTelemetry)
             return network_telemetry
         except Exception as e:
-            self.logger.error(f"Error processing network telemetry: {e}", exc_info=True)
-            raise 
-
+            self.logger.error(f"Error processing network telemetry: {e}")
+            raise
+       
     def _process_environment_telemetry(self, packet: Dict[str, Any]) -> EnvironmentTelemetry:
         telemetry = packet['decoded']['telemetry']
         env_metrics = telemetry['environmentMetrics']
