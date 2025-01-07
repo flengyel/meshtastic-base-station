@@ -1,8 +1,8 @@
 # type_validation.py
-from typing import TypedDict, Dict, Any, Type, get_type_hints, Union, get_args, Literal
-import typing
+from typing import (Dict, Any, get_type_hints, Union, get_args, Literal,_TypedDictMeta) 
+import typing # For Python 3.8+
 
-def validate_typed_dict(data: Dict[str, Any], type_class: Type[TypedDict]) -> bool:
+def validate_typed_dict(data: Dict[str, Any], type_class: _TypedDictMeta) -> bool:
     """
     Validate that a dictionary matches a TypedDict structure.
     
