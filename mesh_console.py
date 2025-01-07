@@ -20,9 +20,9 @@ import asyncio
 from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
 import serial.tools.list_ports
-from logger import configure_logger, get_available_levels
-from redis_handler import RedisHandler
-from meshtastic_data_handler import MeshtasticDataHandler
+from src.station.utils.logger import configure_logger, get_available_levels
+from src.station.handlers.redis_handler import RedisHandler
+from src.station.handlers.data_handler import MeshtasticDataHandler
 import logging
 
 # Initialize asyncio queue for Redis updates
