@@ -29,17 +29,56 @@ from src.station.config.base_config import BaseStationConfig
 redis_update_queue = asyncio.Queue()
 
 def parse_arguments():
-    """Parse command-line arguments with enhanced configuration options."""
+    """Parse command-line arguments with enhanced logging options."""
     parser = argparse.ArgumentParser(
         description="Meshtastic Console",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --config config.yaml              # Use specific config file
-  %(prog)s --device COM3                     # Override device port
-  %(prog)s --redis-host pironman5.local      # Override Redis host
-  %(prog)s --log INFO,PACKET                 # Show INFO and PACKET messages
+  %(prog)s --device /dev/ttyACM0                    # Use default INFO level
+  %(prog)s --log INFO,PACKET                        # Show INFO and PACKET messages
+  %(prog)s --log DEBUG --threshold                  # Show DEBUG and above
+  %(prog)s --log PACKET,REDIS --no-file-logging     # Show only PACKET and REDIS, console only
         """
+    )
+    
+    # Device configuration
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="/dev/ttyACM0",
+        help="Serial interface device (default: /dev/ttyACM0)"
+    )
+    
+    # Logging configuration
+    log_group = parser.add_argument_group('Logging Options')
+    log_group.add_argument(
+        "--log",
+        type=str,
+        default="INFO",
+        help=f"Comma-separated list of log levels to include. Available levels: {', '.join(get_available_levels())}"
+    )
+    log_group.add_argument(
+        "--threshold",
+        action="store_true",
+        help="Treat log level as threshold (show all messages at or above specified level)"
+    )
+    log_group.add_argument(
+        "--no-file-logging",
+        action="store_true",
+        help="Disable logging to file"
+    )
+    
+    # Other options
+    parser.add_argument(
+        "--display-redis",
+        action="store_true",
+        help="Display Redis data and exit without connecting to the serial device"
+    )
+    parser.add_argument(
+        "--debugging",
+        action="store_true",
+        help="Print diagnostic debugging statements"
     )
     
     # Configuration
@@ -47,13 +86,6 @@ Examples:
         "--config",
         type=str,
         help="Path to configuration file"
-    )
-    
-    # Device configuration
-    parser.add_argument(
-        "--device",
-        type=str,
-        help="Serial interface device (overrides config)"
     )
     
     # Redis configuration
@@ -67,31 +99,13 @@ Examples:
         type=int,
         help="Redis port (overrides config)"
     )
-    parser.add_argument(
-        "--display-redis",
-        action="store_true",
-        help="Display Redis data and exit without connecting to the serial device"
-    )
-
-    # Existing logging configuration
-    log_group = parser.add_argument_group('Logging Options')
-    log_group.add_argument(
-        "--log",
-        type=str,
-        help=f"Comma-separated list of log levels to include. Available levels: {', '.join(get_available_levels())}"
-    )
-    log_group.add_argument(
-        "--threshold",
-        action="store_true",
-        help="Treat log level as threshold"
-    )
-    log_group.add_argument(
-        "--no-file-logging",
-        action="store_true",
-        help="Disable logging to file"
-    )
     
-    return parser.parse_args()
+    args = parser.parse_args()
+    
+    # Convert comma-separated log levels to list
+    args.log_levels = [level.strip() for level in args.log.split(",")]
+    
+    return args
 
 async def display_stored_data(data_handler):
     """Display previously stored data."""
@@ -153,49 +167,6 @@ def on_node_message(packet, interface):
     except Exception as e:
         logger.error(f"Error in node message callback: {e}", exc_info=True)
 
-async def redis_dispatcher(data_handler):
-    """Process Redis updates from the queue."""
-    try:
-        logger.info("Redis dispatcher task started.")
-        last_size = 0
-        while True:
-            try:
-                current_size = redis_update_queue.qsize()
-                if current_size != last_size:
-                    logger.debug(f"Queue size changed to: {current_size}")
-                    last_size = current_size
-
-                update = await asyncio.wait_for(redis_update_queue.get(), timeout=0.1)
-                logger.debug(f"Received update type: {update['type']}")
-                
-                # Process the packet
-                await data_handler.process_packet(update["packet"], update["type"])
-                redis_update_queue.task_done()
-                
-            except asyncio.TimeoutError:
-                continue  # No updates available, continue polling
-            except Exception as e:
-                logger.error(f"Error in dispatcher: {e}", exc_info=True)
-                redis_update_queue.task_done()
-                
-    except asyncio.CancelledError:
-        logger.info("Dispatcher received cancellation signal")
-        # Process remaining updates during shutdown
-        remaining = redis_update_queue.qsize()
-        if remaining > 0:
-            logger.info(f"Processing {remaining} remaining updates during shutdown")
-            while not redis_update_queue.empty():
-                update = redis_update_queue.get_nowait()
-                try:
-                    await data_handler.process_packet(update["packet"], update["type"])
-                except Exception as e:
-                    logger.error(f"Error processing remaining update: {e}")
-                finally:
-                    redis_update_queue.task_done()
-        logger.debug("Redis dispatcher completed final updates")
-        raise  # Re-raise to ensure proper task cleanup
-
-# minimal implementation for now
 def on_telemetry_message(packet, interface):
     """Callback for telemetry messages."""
     logger.packet(f"on_telemetry_message: {packet}")
@@ -220,9 +191,56 @@ def suggest_available_ports():
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
+async def redis_dispatcher(data_handler):
+    """Process Redis updates from the queue."""
+    try:
+        logger.info("Redis dispatcher task started.")
+        last_size = 0
+        while True:
+            try:
+                current_size = redis_update_queue.qsize()
+                if current_size != last_size:
+                    logger.debug(f"Queue size changed to: {current_size}")
+                    last_size = current_size
+
+                # Use a shorter timeout to prevent hanging
+                try:
+                    update = await asyncio.wait_for(redis_update_queue.get(), timeout=1.0)
+                    logger.debug(f"Received update type: {update['type']}")
+                    
+                    # Process the packet
+                    await data_handler.process_packet(update["packet"], update["type"])
+                    redis_update_queue.task_done()
+                except asyncio.TimeoutError:
+                    # Periodic heartbeat
+                    logger.debug("Dispatcher heartbeat - no updates")
+                    await asyncio.sleep(5.0)
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"Error in dispatcher: {e}", exc_info=True)
+                redis_update_queue.task_done()
+                await asyncio.sleep(1.0)  # Prevent tight error loops
+                
+    except asyncio.CancelledError:
+        logger.info("Dispatcher received cancellation signal")
+        # Process remaining updates during shutdown
+        remaining = redis_update_queue.qsize()
+        if remaining > 0:
+            logger.info(f"Processing {remaining} remaining updates during shutdown")
+            while not redis_update_queue.empty():
+                update = redis_update_queue.get_nowait()
+                try:
+                    await data_handler.process_packet(update["packet"], update["type"])
+                except Exception as e:
+                    logger.error(f"Error processing remaining update: {e}")
+                finally:
+                    redis_update_queue.task_done()
+        logger.debug("Redis dispatcher completed final updates")
+        raise  # Re-raise to ensure proper task cleanup
+
 async def main():
     """Main function to set up the Meshtastic listener."""
-    # Parse arguments
     args = parse_arguments()
     
     try:
@@ -250,10 +268,10 @@ async def main():
         global logger
         logger = configure_logger(
             name=__name__,
-            log_levels=config.logging.level.split(','),
-            use_threshold=config.logging.use_threshold,
-            log_file=config.logging.file,
-            debugging=config.logging.debugging
+            log_levels=args.log_levels,
+            use_threshold=args.threshold,
+            log_file=None if args.no_file_logging else 'meshtastic.log',
+            debugging=args.debugging
         )
 
         # Initialize Redis handler with configuration
