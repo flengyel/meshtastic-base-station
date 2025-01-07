@@ -24,6 +24,7 @@ from src.station.utils.logger import configure_logger, get_available_levels
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
+import redis # For Redis exceptions
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
@@ -277,13 +278,24 @@ async def main():
             logger.debug(f"Config load error details:", exc_info=True)
             logger.info("Continuing with command line settings")
 
-    # Initialize handlers
-    redis_handler = RedisHandler(
-        host=config.redis.host if config else "localhost",
-        port=config.redis.port if config else 6379,
-        logger=logger
-    )    
-    await redis_handler.verify_connection()
+# Initialize handlers
+    try:
+        redis_handler = RedisHandler(
+            host=config.redis.host if config else "localhost",
+            port=config.redis.port if config else 6379,
+            logger=logger
+        )    
+        await redis_handler.verify_connection()
+    except redis.exceptions.ConnectionError as e:
+        logger.error(f"Could not connect to Redis at {config.redis.host if config else 'localhost'}:{config.redis.port if config else 6379}")
+        logger.error("Please check Redis configuration and ensure Redis server is running")
+        logger.debug(f"Redis connection error details:", exc_info=True)
+        return  # Exit gracefully
+    except Exception as e:
+        logger.error(f"Unexpected error initializing Redis: {e}")
+        logger.debug("Initialization error details:", exc_info=True)
+        return  # Exit gracefully
+
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 
     # Display Redis data and exit if requested

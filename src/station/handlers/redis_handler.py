@@ -18,6 +18,7 @@
 # redis_handler.py
 
 import  redis.asyncio as redis
+import redis.exceptions
 import logging
 
 class RedisHandler:
