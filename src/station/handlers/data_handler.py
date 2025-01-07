@@ -272,20 +272,21 @@ class MeshtasticDataHandler:
             raise
        
     def _process_environment_telemetry(self, packet: Dict[str, Any]) -> EnvironmentTelemetry:
+        """Process environment telemetry packet."""
         telemetry = packet['decoded']['telemetry']
         env_metrics = telemetry['environmentMetrics']
-    
+
         environment_telemetry: EnvironmentTelemetry = {
             'type': 'environment_telemetry',
             'timestamp': datetime.now().isoformat(),
             'from_num': int(packet['from']),
             'from_id': str(packet['fromId']),
             'environment_metrics': {
-                'temperature': float(env_metrics['temperature']),
-                'relative_humidity': float(env_metrics['relativeHumidity']),
-                'barometric_pressure': float(env_metrics['barometricPressure']),
-                'gas_resistance': float(env_metrics['gasResistance']),
-                'iaq': int(env_metrics['iaq'])
+                'temperature': float(env_metrics.get('temperature', 0.0)),
+                'relative_humidity': float(env_metrics.get('relativeHumidity', 0.0)),
+                'barometric_pressure': float(env_metrics.get('barometricPressure', 0.0)),
+                'gas_resistance': float(env_metrics.get('gasResistance', 0.0)),
+                'iaq': int(env_metrics.get('iaq', 0))
             },
             'metrics': self._extract_metrics(packet),
             'priority': packet.get('priority'),
