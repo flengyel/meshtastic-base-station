@@ -83,7 +83,7 @@ class BaseStationConfig:
         """
         # Default config locations
         config_locations = [
-            Path.cwd() / 'src/station/config/config.yaml',
+            Path.cwd() / 'config.yaml',
             Path.home() / '.config' / 'meshtastic' / 'config.yaml',
             Path('/etc/meshtastic/config.yaml'),
         ]
