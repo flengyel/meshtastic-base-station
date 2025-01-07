@@ -4,12 +4,17 @@
 *.pyd
 __pycache__/
 
+# Windoze
+Scripts/
+
 # Virtual environment directories
 env/
 venv/
 ENV/
 venv.bak/
 .venv/
+# Not to mention the pip-installed packages
+pyvenv.cfg
 
 # Distribution / packaging
 .Python

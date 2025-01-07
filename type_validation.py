@@ -1,5 +1,5 @@
 # type_validation.py
-from typing import TypedDict, Optional, Dict, Any, Type, get_type_hints, Union, get_args, Literal
+from typing import TypedDict, Dict, Any, Type, get_type_hints, Union, get_args, Literal
 import typing
 
 def validate_typed_dict(data: Dict[str, Any], type_class: Type[TypedDict]) -> bool:
