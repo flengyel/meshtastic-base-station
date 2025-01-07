@@ -23,44 +23,62 @@ import serial.tools.list_ports
 from src.station.utils.logger import configure_logger, get_available_levels
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
+from src.station.config.base_config import BaseStationConfig
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
 
 def parse_arguments():
-    """Parse command-line arguments with enhanced logging options."""
+    """Parse command-line arguments with enhanced configuration options."""
     parser = argparse.ArgumentParser(
         description="Meshtastic Console",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --device /dev/ttyACM0                    # Use default INFO level
-  %(prog)s --log INFO,PACKET                        # Show INFO and PACKET messages
-  %(prog)s --log DEBUG --threshold                  # Show DEBUG and above
-  %(prog)s --log PACKET,REDIS --no-file-logging     # Show only PACKET and REDIS, console only
+  %(prog)s --config config.yaml              # Use specific config file
+  %(prog)s --device COM3                     # Override device port
+  %(prog)s --redis-host pironman5.local      # Override Redis host
+  %(prog)s --log INFO,PACKET                 # Show INFO and PACKET messages
         """
+    )
+    
+    # Configuration
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to configuration file"
     )
     
     # Device configuration
     parser.add_argument(
         "--device",
         type=str,
-        default="/dev/ttyACM0",
-        help="Serial interface device (default: /dev/ttyACM0)"
+        help="Serial interface device (overrides config)"
     )
     
-    # Logging configuration
+    # Redis configuration
+    parser.add_argument(
+        "--redis-host",
+        type=str,
+        help="Redis host (overrides config)"
+    )
+    parser.add_argument(
+        "--redis-port",
+        type=int,
+        help="Redis port (overrides config)"
+    )
+    
+    # Existing logging configuration
     log_group = parser.add_argument_group('Logging Options')
     log_group.add_argument(
         "--log",
         type=str,
-        default="INFO",
         help=f"Comma-separated list of log levels to include. Available levels: {', '.join(get_available_levels())}"
     )
     log_group.add_argument(
         "--threshold",
         action="store_true",
-        help="Treat log level as threshold (show all messages at or above specified level)"
+        help="Treat log level as threshold"
     )
     log_group.add_argument(
         "--no-file-logging",
@@ -68,24 +86,7 @@ Examples:
         help="Disable logging to file"
     )
     
-    # Other options
-    parser.add_argument(
-        "--display-redis",
-        action="store_true",
-        help="Display Redis data and exit without connecting to the serial device"
-    )
-    parser.add_argument(
-        "--debugging",
-        action="store_true",
-        help="Print diagnostic debugging statements"
-    )
-    
-    args = parser.parse_args()
-    
-    # Convert comma-separated log levels to list
-    args.log_levels = [level.strip() for level in args.log.split(",")]
-    
-    return args
+    return parser.parse_args()
 
 async def display_stored_data(data_handler):
     """Display previously stored data."""
@@ -216,20 +217,45 @@ def suggest_available_ports():
 
 async def main():
     """Main function to set up the Meshtastic listener."""
-    # Parse arguments and set up logging
+    # Parse arguments
     args = parse_arguments()
     
+    # Load configuration
+    if args.config:
+        config = BaseStationConfig.from_yaml(args.config)
+    else:
+        config = BaseStationConfig.load()
+    
+    # Override config with command line arguments
+    if args.device:
+        config.device.port = args.device
+    if args.redis_host:
+        config.redis.host = args.redis_host
+    if args.redis_port:
+        config.redis.port = args.redis_port
+    if args.log:
+        config.logging.level = args.log
+    if args.threshold:
+        config.logging.use_threshold = True
+    if args.no_file_logging:
+        config.logging.file = None
+        
+    # Configure logging
     global logger
     logger = configure_logger(
         name=__name__,
-        log_levels=args.log_levels,
-        use_threshold=args.threshold,
-        log_file=None if args.no_file_logging else 'meshtastic.log',
-        debugging=args.debugging
+        log_levels=config.logging.level.split(','),
+        use_threshold=config.logging.use_threshold,
+        log_file=config.logging.file,
+        debugging=config.logging.debugging
     )
 
-    # Initialize handlers
-    redis_handler = RedisHandler(logger=logger)
+    # Initialize handlers with configuration
+    redis_handler = RedisHandler(
+        host=config.redis.host,
+        port=config.redis.port,
+        logger=logger
+    )
     await redis_handler.verify_connection()
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 
