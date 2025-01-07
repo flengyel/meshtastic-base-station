@@ -32,35 +32,41 @@ A Python-based base station for Meshtastic devices providing persistent storage 
 ## Prerequisites
 
 ### Hardware
+
 - Meshtastic-compatible device with serial connection
 - Computer or Raspberry Pi running Linux (tested on Raspberry Pi 5)
 
 ### Software
+
 - Python 3.8+
 - Redis server
 - Required packages:
-  ```
+
+```python
   redis-py-async
   meshtastic
   pyserial
   pypubsub
   protobuf
-  ```
+```
 
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/yourusername/meshtastic-base-station.git
    cd meshtastic-base-station
    ```
 
 2. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. Start Redis:
+
    ```bash
    redis-server
    ```
@@ -75,7 +81,7 @@ python mesh_console.py
 
 ### Command Line Options
 
-```
+```bash
 usage: mesh_console.py [-h] [--device DEVICE] [--log LOG] [--threshold]
                       [--no-file-logging] [--display-redis] [--debugging]
 
@@ -97,27 +103,31 @@ Other Options:
 ### Example Commands
 
 View packet data:
+
 ```bash
 python mesh_console.py --log PACKET
 ```
 
 Monitor telemetry:
+
 ```bash
 python mesh_console.py --log DATA
 ```
 
 Display stored data:
+
 ```bash
 python mesh_console.py --display-redis
 ```
 
 ### Log Levels
+
 - Standard: DEBUG, INFO, WARNING, ERROR, CRITICAL
 - Custom: PACKET (mesh traffic), DATA (telemetry), REDIS (storage)
 
 ### Redis Data Structure
 
-```
+```python
 meshtastic:messages               # Text messages
 meshtastic:nodes                 # Node information
 meshtastic:telemetry:device      # Device metrics
@@ -130,11 +140,13 @@ Messages and telemetry are stored as JSON, preserving complete packet informatio
 ### Redis CLI Examples
 
 View recent telemetry:
+
 ```bash
 redis-cli LRANGE meshtastic:telemetry:device 0 10
 ```
 
 Check node status:
+
 ```bash
 redis-cli HGETALL meshtastic:nodes
 ```
@@ -174,5 +186,5 @@ GNU General Public License v3.0 - see [GNU GPL v3.0](https://www.gnu.org/license
 
 ## Acknowledgments
 
-- Meshtastic Project (https://meshtastic.org)
+- [Meshtastic Project](https://meshtastic.org)
 - Contributors to the Meshtastic Python API
