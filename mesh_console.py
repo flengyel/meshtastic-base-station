@@ -110,40 +110,49 @@ Examples:
 async def display_stored_data(data_handler):
     """Display previously stored data."""
     # Display nodes
-    logger.info("--- Previously Saved Nodes ---")
+    print("\n--- Previously Saved Nodes ---")  # Always print headers
+    logger.debug("Attempting to retrieve formatted nodes...")
     nodes = await data_handler.get_formatted_nodes()
+    logger.debug(f"Retrieved {len(nodes) if nodes else 0} nodes")
     if not nodes:
-        logger.info("[No nodes found]")
+        print("[No nodes found]")
     else:
         for node in sorted(nodes, key=lambda x: x['timestamp']):
-            logger.info(f"[{node['timestamp']}] Node {node['id']}: {node['name']}")
+            print(f"[{node['timestamp']}] Node {node['id']}: {node['name']}")
 
     # Display messages
-    logger.info("\n--- Previously Saved Messages ---")
+    print("\n--- Previously Saved Messages ---")
+    logger.debug("Attempting to retrieve formatted messages...")
     messages = await data_handler.get_formatted_messages()
+    logger.debug(f"Retrieved {len(messages) if messages else 0} messages")
     if not messages:
-        logger.info("[No messages found]")
+        print("[No messages found]")
     else:
         for msg in sorted(messages, key=lambda x: x['timestamp']):
-            logger.info(f"[{msg['timestamp']}] {msg['from']} -> {msg['to']}: {msg['text']}")
+            print(f"[{msg['timestamp']}] {msg['from']} -> {msg['to']}: {msg['text']}")
 
     # Display device telemetry
-    logger.info("\n--- Previously Saved Device Telemetry ---")
+    print("\n--- Previously Saved Device Telemetry ---")
+    logger.debug("Attempting to retrieve device telemetry...")
     device_telemetry = await data_handler.get_formatted_device_telemetry()
+    logger.debug(f"Retrieved {len(device_telemetry) if device_telemetry else 0} device telemetry records")
     if not device_telemetry:
-        logger.info("[No device telemetry found]")
+        print("[No device telemetry found]")
     else:
         for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-10:]:  # Last 10 entries
-            logger.info(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
+            print(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
 
     # Display network telemetry
-    logger.info("\n--- Previously Saved Network Telemetry ---")
+    print("\n--- Previously Saved Network Telemetry ---")
+    logger.debug("Attempting to retrieve network telemetry...")
     network_telemetry = await data_handler.get_formatted_network_telemetry()
+    logger.debug(f"Retrieved {len(network_telemetry) if network_telemetry else 0} network telemetry records")
     if not network_telemetry:
-        logger.info("[No network telemetry found]")
+        print("[No network telemetry found]")
     else:
         for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-5:]:  # Last 5 entries
-            logger.info(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
+            print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
+
 
 def on_text_message(packet, interface):
     """Callback for text messages."""
@@ -241,118 +250,92 @@ async def redis_dispatcher(data_handler):
 
 async def main():
     """Main function to set up the Meshtastic listener."""
+    # Parse arguments and set up logging
     args = parse_arguments()
     
-    try:
-        # Load configuration
-        if args.config:
-            config = BaseStationConfig.from_yaml(args.config)
-        else:
-            config = BaseStationConfig.load()
-        
-        # Override config with command line arguments
-        if args.device:
-            config.device.port = args.device
-        if args.redis_host:
-            config.redis.host = args.redis_host
-        if args.redis_port:
-            config.redis.port = args.redis_port
-        if args.log:
-            config.logging.level = args.log
-        if args.threshold:
-            config.logging.use_threshold = True
-        if args.no_file_logging:
-            config.logging.file = None
-            
-        # Configure logging
-        global logger
-        logger = configure_logger(
-            name=__name__,
-            log_levels=args.log_levels,
-            use_threshold=args.threshold,
-            log_file=None if args.no_file_logging else 'meshtastic.log',
-            debugging=args.debugging
-        )
+    global logger
+    logger = configure_logger(
+        name=__name__,
+        log_levels=args.log_levels,
+        use_threshold=args.threshold,
+        log_file=None if args.no_file_logging else 'meshtastic.log',
+        debugging=args.debugging
+    )
 
-        # Initialize Redis handler with configuration
-        logger.debug(f"Initializing Redis handler with {config.redis.host}:{config.redis.port}")
-        redis_handler = RedisHandler(
-            host=config.redis.host,
-            port=config.redis.port,
-            logger=logger
-        )
-
-        # Verify Redis connection with timeout
+    # First step: load config if specified
+    config = None
+    if args.config:
+        logger.debug(f"Attempting to load config from: {args.config}")
         try:
-            await asyncio.wait_for(redis_handler.verify_connection(), timeout=10.0)
-        except asyncio.TimeoutError:
-            logger.error("Redis connection verification timed out")
-            await redis_handler.close()
-            return
+            from src.station.config.base_config import BaseStationConfig
+            logger.debug("Successfully imported BaseStationConfig")
+            config = BaseStationConfig.load() # cls knows about directories
+            logger.debug(f"Loaded configuration from {args.config}")
+            logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
         except Exception as e:
-            logger.error(f"Redis connection failed: {e}")
-            await redis_handler.close()
-            return
+            logger.warning(f"Could not load configuration: {e}")
+            logger.debug(f"Config load error details:", exc_info=True)
+            logger.info("Continuing with command line settings")
 
-        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+    # Initialize handlers
+    redis_handler = RedisHandler(
+        host=config.redis.host if config else "localhost",
+        port=config.redis.port if config else 6379,
+        logger=logger
+    )    
+    await redis_handler.verify_connection()
+    data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 
-        # Display Redis data and exit if requested
-        if args.display_redis:
-            logger.info("Displaying Redis data ...")
-            await display_stored_data(data_handler)
-            await redis_handler.close()
-            return
-
-        # Initialize device connection
-        try:
-            logger.debug(f"Connecting to device at {config.device.port}")
-            interface = SerialInterface(config.device.port)
-            logger.debug("Serial interface connected successfully")
-        except FileNotFoundError:
-            logger.error(f"Cannot connect to serial device {config.device.port}: Device not found.")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-        except Exception as e:
-            logger.error(f"Cannot connect to serial device {config.device.port}: {e}")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-
-        # Display stored data
+    # Display Redis data and exit if requested
+    if args.display_redis:
+        logger.info("Displaying Redis data ...")
         await display_stored_data(data_handler)
+        await redis_handler.close()
+        return
 
-        # Subscribe to message topics
-        pub.subscribe(on_text_message, "meshtastic.receive.text")
-        pub.subscribe(on_node_message, "meshtastic.receive.user")
-        pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
-        logger.info("Subscribed to text, user, and telemetry messages.")
-
-        # Start Redis dispatcher
-        dispatcher_task = asyncio.create_task(redis_dispatcher(data_handler))
-        logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
-
-        try:
-            logger.info("Listening for messages... Press Ctrl+C to exit.")
-            await dispatcher_task
-        except KeyboardInterrupt:
-            logger.info("Shutdown initiated...")
-            dispatcher_task.cancel()
-            try:
-                await dispatcher_task  # Wait for task to finish processing queue
-            except asyncio.CancelledError:
-                pass  # Expected during shutdown
-        finally:
-            interface.close()
-            await redis_handler.close()
-            logger.info("Interfaces closed.")
-
+    # Initialize device connection
+    try:
+        interface = SerialInterface(args.device)
+        logger.debug(f"Connected to serial device: {args.device}")
+    except FileNotFoundError:
+        logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
+        suggest_available_ports()
+        await redis_handler.close()
+        return
     except Exception as e:
-        logger.error(f"Unexpected error in main: {e}", exc_info=True)
-        if 'redis_handler' in locals():
-            await redis_handler.close()
-        if 'interface' in locals() and hasattr(interface, 'close'):
-            interface.close()
+        logger.error(f"Cannot connect to serial device {args.device}: {e}")
+        suggest_available_ports()
+        await redis_handler.close()
+        return
+
+    # Display stored data
+    await display_stored_data(data_handler)
+
+    # Subscribe to message topics
+    pub.subscribe(on_text_message, "meshtastic.receive.text")
+    pub.subscribe(on_node_message, "meshtastic.receive.user")
+    pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
+    logger.info("Subscribed to text, user, and telemetry messages.")
+
+    # Start Redis dispatcher
+    dispatcher_task = asyncio.create_task(redis_dispatcher(data_handler))
+    logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
+
+    try:
+        logger.info("Listening for messages... Press Ctrl+C to exit.")
+        await dispatcher_task
+    except KeyboardInterrupt:
+        logger.info("Shutdown initiated...")
+        dispatcher_task.cancel()
+        try:
+            await dispatcher_task  # Wait for task to finish processing queue
+        except asyncio.CancelledError:
+            pass  # Expected during shutdown
+    finally:
+        interface.close()
+        await redis_handler.close()
+        logger.info("Interface closed.")
+
 
 if __name__ == "__main__":
     try:
