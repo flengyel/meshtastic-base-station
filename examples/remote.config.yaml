@@ -8,7 +8,7 @@ data_retention_days: 30
 
 # Redis configuration
 redis:
-  host: localhost  # Local Redis server on Raspberry Pi 5
+  host: pironman5.local  # Local Redis server on Raspberry Pi 5
   port: 6379
   password: null  # Set if using Redis authentication
   db: 0
