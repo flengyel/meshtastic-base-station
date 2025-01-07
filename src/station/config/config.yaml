@@ -1,14 +1,14 @@
 # Meshtastic Base Station Configuration
 
 # Environment (development, testing, production)
-environment: development
+environment: production  # Changed to production for Raspberry Pi 5 deployment
 
 # Data retention in days
 data_retention_days: 30
 
 # Redis configuration
 redis:
-  host: pironman5.local  # Remote Redis server
+  host: localhost  # Local Redis server on Raspberry Pi 5
   port: 6379
   password: null  # Set if using Redis authentication
   db: 0
@@ -16,7 +16,7 @@ redis:
 
 # Device configuration
 device:
-  port: COM3  # Windows COM port
+  port: /dev/ttyACM0  # Linux default for Meshtastic devices
   baud_rate: 115200
   timeout: 1.0
 
