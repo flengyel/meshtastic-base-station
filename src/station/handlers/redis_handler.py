@@ -17,9 +17,8 @@
 
 # redis_handler.py
 
-import redis.asyncio as redis
+import  redis.asyncio as redis
 import logging
-from ..utils.logger import configure_logger
 
 class RedisHandler:
     """

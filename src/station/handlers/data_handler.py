@@ -19,14 +19,10 @@ from datetime import datetime
 import json
 import logging
 from typing import Optional, Dict, Any 
-from ..types.meshtastic_types import (
-    Metrics, UserInfo, NodeInfo, TextMessage,
-    DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry,
-    MeshtasticPacket, PACKET_TYPES
+from ..types.meshtastic_types import (Metrics, NodeInfo, TextMessage,
+       DeviceTelemetry, NetworkTelemetry, EnvironmentTelemetry
 )
 from ..utils.validation import validate_typed_dict
-from ..utils.logger import configure_logger
-
 
 class MeshtasticDataHandler:
     """
