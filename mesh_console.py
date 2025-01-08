@@ -265,22 +265,14 @@ async def main():
 
     # First step: load config if specified
     config = None
-    try:
-        from src.station.config.base_config import BaseStationConfig
-        # If the user supplied --config, load from that file; otherwise use defaults
-        if args.config:
-            config = BaseStationConfig.load(path=args.config)
-            logger.debug(f"Loaded configuration from {args.config}")
-            logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
-        else:
-            config = BaseStationConfig.load()
-    except Exception as e:
-        logger.warning(f"Could not load configuration: {e}")
-        logger.debug("Config load error details:", exc_info=True)
-        logger.info("Continuing with default settings")
-        config = BaseStationConfig()  # Final fallback
+    if args.config:
+        config = BaseStationConfig.load(path=args.config, logger=logger)
+        logger.debug(f"Loaded config from {args.config}")
+    else:
+        config = BaseStationConfig.load(logger=logger)
+        logger.debug(f"Loaded default config from known locations")
 
-    # At this point, config is never None
+    logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
 
 
     # Initialize handlers
