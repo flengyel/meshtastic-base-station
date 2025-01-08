@@ -21,7 +21,7 @@ device:
   timeout: 1.0
 
 # Logging configuration
-logging:
+log_cfg:
   level: INFO
   file: meshtastic.log
   use_threshold: false
