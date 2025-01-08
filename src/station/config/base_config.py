@@ -76,35 +76,45 @@ class BaseStationConfig:
         )
 
     @classmethod
-    def load(cls) -> 'BaseStationConfig':
+    def load(cls, path: Optional[str] = None) -> 'BaseStationConfig':
         """
-        Load configuration from environment variables or default config file.
-        Environment variables take precedence over config file.
+        Load configuration from the given path or from a default list
+        of known paths. Then override with environment variables.
         """
-        # Default config locations
-        config_locations = [
-            Path.cwd() / 'config.yaml',
-            Path.home() / '.config' / 'meshtastic' / 'config.yaml',
-            Path('/etc/meshtastic/config.yaml'),
-        ]
-
-        # Try loading from config file
-        config = None
-        for config_path in config_locations:
-            if config_path.exists():
+        if path:
+            # If user-supplied path exists, load from it
+            custom_path = Path(path)
+            if custom_path.exists():
                 try:
-                    config = cls.from_yaml(str(config_path))
-                    logging.info(f"Loaded configuration from {config_path}")
-                    break
+                    config = cls.from_yaml(str(custom_path))
+                    logging.info(f"Loaded configuration from {custom_path}")
                 except Exception as e:
-                    logging.warning(f"Error loading config from {config_path}: {e}")
+                    logging.warning(f"Error loading config from {custom_path}: {e}")
+                    config = cls()  # fallback to defaults
+            else:
+                logging.warning(f"Specified config file {path} not found; falling back to defaults.")
+                config = cls()
+        else:
+            # Original default search logic
+            config_locations = [
+                Path.cwd() / 'config.yaml',
+                Path.home() / '.config' / 'meshtastic' / 'config.yaml',
+                Path('/etc/meshtastic/config.yaml'),
+            ]
+            config = None
+            for config_path in config_locations:
+                if config_path.exists():
+                    try:
+                        config = cls.from_yaml(str(config_path))
+                        logging.info(f"Loaded configuration from {config_path}")
+                        break
+                    except Exception as e:
+                        logging.warning(f"Error loading config from {config_path}: {e}")
+            if config is None:
+                config = cls()
+                logging.info("Using default configuration")
 
-        # If no config file found, use defaults
-        if config is None:
-            config = cls()
-            logging.info("Using default configuration")
-
-        # Override with environment variables
+        # Environment variable overrides
         if os.getenv('MESHTASTIC_REDIS_HOST'):
             config.redis.host = os.getenv('MESHTASTIC_REDIS_HOST')
         if os.getenv('MESHTASTIC_REDIS_PORT'):
@@ -117,3 +127,4 @@ class BaseStationConfig:
             config.logging.level = os.getenv('MESHTASTIC_LOG_LEVEL')
 
         return config
+

@@ -224,7 +224,7 @@ async def redis_dispatcher(data_handler):
                 except asyncio.TimeoutError:
                     # Periodic heartbeat
                     logger.debug("Dispatcher heartbeat - no updates")
-                    await asyncio.sleep(5.0)
+                    await asyncio.sleep(15.0)
                     continue
                     
             except Exception as e:
@@ -265,26 +265,31 @@ async def main():
 
     # First step: load config if specified
     config = None
-    if args.config:
-        logger.debug(f"Attempting to load config from: {args.config}")
-        try:
-            from src.station.config.base_config import BaseStationConfig
-            logger.debug("Successfully imported BaseStationConfig")
-            config = BaseStationConfig.load() # cls knows about directories
+    try:
+        from src.station.config.base_config import BaseStationConfig
+        # If the user supplied --config, load from that file; otherwise use defaults
+        if args.config:
+            config = BaseStationConfig.load(path=args.config)
             logger.debug(f"Loaded configuration from {args.config}")
             logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
-        except Exception as e:
-            logger.warning(f"Could not load configuration: {e}")
-            logger.debug(f"Config load error details:", exc_info=True)
-            logger.info("Continuing with command line settings")
+        else:
+            config = BaseStationConfig.load()
+    except Exception as e:
+        logger.warning(f"Could not load configuration: {e}")
+        logger.debug("Config load error details:", exc_info=True)
+        logger.info("Continuing with default settings")
+        config = BaseStationConfig()  # Final fallback
+
+    # At this point, config is never None
+
 
     # Initialize handlers
     try:
         redis_handler = RedisHandler(
             host=config.redis.host if config else "localhost",
             port=config.redis.port if config else 6379,
-            logger=logger
-        )    
+            logger=logger)    
+
         if not await redis_handler.verify_connection():
             logger.error(f"Could not connect to Redis at {config.redis.host if config else 'localhost'}:"
                         f"{config.redis.port if config else 6379}")
@@ -297,6 +302,7 @@ async def main():
         if args.debugging:
             logger.debug("Initialization error details:", exc_info=True)
         return  # Exit gracefully
+
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 
