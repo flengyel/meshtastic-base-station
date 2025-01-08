@@ -267,7 +267,6 @@ async def main():
     config = None
     if args.config:
         config = BaseStationConfig.load(path=args.config, logger=logger)
-        logger.debug(f"Loaded config from {args.config}")
     else:
         config = BaseStationConfig.load(logger=logger)
         logger.debug(f"Loaded default config from known locations")
