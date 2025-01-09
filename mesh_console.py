@@ -24,6 +24,7 @@ from src.station.utils.logger import configure_logger, get_available_levels
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
+from src.station.config.base_config import BaseStationConfig
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
@@ -265,17 +266,13 @@ async def main():
     # First step: load config if specified
     config = None
     if args.config:
-        logger.debug(f"Attempting to load config from: {args.config}")
-        try:
-            from src.station.config.base_config import BaseStationConfig
-            logger.debug("Successfully imported BaseStationConfig")
-            config = BaseStationConfig.load() # cls knows about directories
-            logger.debug(f"Loaded configuration from {args.config}")
-            logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
-        except Exception as e:
-            logger.warning(f"Could not load configuration: {e}")
-            logger.debug(f"Config load error details:", exc_info=True)
-            logger.info("Continuing with command line settings")
+        config = BaseStationConfig.load(path=args.config, logger=logger)
+    else:
+        config = BaseStationConfig.load(logger=logger)
+        logger.debug(f"Loaded default config from known locations")
+
+    logger.debug(f"Config contains: redis.host={config.redis.host}, redis.port={config.redis.port}")
+
 
     # Initialize handlers
     try:
@@ -296,6 +293,7 @@ async def main():
         if args.debugging:
             logger.debug("Initialization error details:", exc_info=True)
         return  # Exit gracefully
+
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
 

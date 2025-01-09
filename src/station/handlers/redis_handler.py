@@ -17,7 +17,7 @@
 
 # redis_handler.py
 
-import  redis.asyncio as redis
+import redis.asyncio as aioredis
 import redis.exceptions
 import logging
 
@@ -30,7 +30,7 @@ class RedisHandler:
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         try:
-            self.client = redis.Redis(host=host, port=port, decode_responses=True)
+            self.client = aioredis.Redis(host=host, port=port, decode_responses=True)
             self.logger.debug("Redis handler initialized")
         except Exception as e:
             self.logger.error(f"Failed to create Redis client: {e}", exc_info=True)
