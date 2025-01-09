@@ -17,18 +17,13 @@
 
 import logging
 from typing import Union, List, Optional
-
-# Custom log levels 
-# PACKET will show REDIS but not conversely
-PACKET_LEVEL = 15
-DATA_LEVEL   = 16
-REDIS_LEVEL  = 17
+from src.station.utils.constants import LoggingConst
 
 # Map level names to values
 CUSTOM_LEVELS = {
-    "PACKET": PACKET_LEVEL,
-    "DATA": DATA_LEVEL,
-    "REDIS": REDIS_LEVEL
+    "PACKET": LoggingConst.PACKET_LEVEL,
+    "DATA": LoggingConst.DATA_LEVEL,
+    "REDIS": LoggingConst.REDIS_LEVEL
 }
 
 def add_custom_log_levels():
@@ -37,16 +32,16 @@ def add_custom_log_levels():
         logging.addLevelName(level, name)
 
     def packet(self, message, *args, **kwargs):
-        if self.isEnabledFor(PACKET_LEVEL):
-            self._log(PACKET_LEVEL, message, args, **kwargs)
+        if self.isEnabledFor(LoggingConst.PACKET_LEVEL):
+            self._log(LoggingConst.PACKET_LEVEL, message, args, **kwargs)
     
     def data(self, message, *args, **kwargs):
-        if self.isEnabledFor(DATA_LEVEL):
-            self._log(DATA_LEVEL, message, args, **kwargs)
+        if self.isEnabledFor(LoggingConst.DATA_LEVEL):
+            self._log(LoggingConst.DATA_LEVEL, message, args, **kwargs)
 
     def redis(self, message, *args, **kwargs):
-        if self.isEnabledFor(REDIS_LEVEL):
-            self._log(REDIS_LEVEL, message, args, **kwargs)
+        if self.isEnabledFor(LoggingConst.REDIS_LEVEL):
+            self._log(LoggingConst.REDIS_LEVEL, message, args, **kwargs)
 
     logging.Logger.packet = packet
     logging.Logger.data   = data
@@ -87,7 +82,7 @@ def configure_logger(
     name: str,
     log_levels: Union[str, List[str]],
     use_threshold: bool = False,
-    log_file: Optional[str] = 'meshtastic.log',
+    log_file: Optional[str] = LoggingConst.DEFAULT_FILE,
     debugging: bool = False
 ) -> logging.Logger:
     """
@@ -102,7 +97,7 @@ def configure_logger(
     """
     if debugging:
         print(f"Initializing logger: {name}")
-        print(f"Log levels: {log_levels}")
+        print(f"Base level: {logging.getLevelName(base_level)}")
         print(f"Using threshold: {use_threshold}")
 
     logger = logging.getLogger(name)
@@ -140,11 +135,6 @@ def configure_logger(
         file_handler.setFormatter(file_formatter)
         file_handler.addFilter(log_filter)
         logger.addHandler(file_handler)
-
-    if debugging:
-        print(f"Logger configured with levels: {[logging.getLevelName(lvl) for lvl in numeric_levels]}")
-        print(f"Base level: {logging.getLevelName(base_level)}")
-        print(f"Using threshold: {use_threshold}")
 
     return logger
 
