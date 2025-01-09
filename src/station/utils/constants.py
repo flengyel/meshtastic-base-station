@@ -31,6 +31,13 @@ class RedisConst:
     DEFAULT_HOST = "localhost"
     DEFAULT_PORT = 6379
     DEFAULT_DB = 0
+    DEFAULT_DECODE_RESPONSES = True
+    # Redis key names
+    KEY_MESSAGES = "meshtastic:messages"
+    KEY_NODES = "meshtastic:nodes"
+    KEY_TELEMETRY_DEVICE = "meshtastic:telemetry:device"
+    KEY_TELEMETRY_NETWORK = "meshtastic:telemetry:network"
+    KEY_TELEMETRY_ENVIRONMENT = "meshtastic:telemetry:environment"
 
 # Device Configuration
 class DeviceConst:
@@ -53,6 +60,9 @@ class LoggingConst:
     """Logging-related constants."""
     DEFAULT_LEVEL = "INFO"
     DEFAULT_FILE = "meshtastic.log"
+    DEFAULT_FORMAT = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
+    DEFAULT_USE_THRESHOLD = False
+    DEFAULT_DEBUGGING = False
     PACKET_LEVEL = 15  # Custom log levels
     DATA_LEVEL = 16
     REDIS_LEVEL = 17
@@ -64,4 +74,13 @@ class RetentionConst:
     MAX_QUEUE_SIZE = 10000      # Maximum queue size before oldest entries removed
     CLEANUP_INTERVAL = 3600     # Hourly cleanup in seconds(meshtastic-base-station) 
 
-
+# Base Station Configuration
+class BaseStationConst:
+    """Base Station configuration constants."""
+    DEFAULT_DATA_RETENTION_DAYS = RetentionConst.DEFAULT_DAYS
+    DEFAULT_ENVIRONMENT = "development"
+    CONFIG_PATHS = [
+        'config.yaml',                               # Current directory
+        '.config/meshtastic/config.yaml',            # User config
+        '/etc/meshtastic/config.yaml',              # System config
+    ]
