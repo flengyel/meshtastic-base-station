@@ -33,7 +33,7 @@ class RedisConfig:
     port: int = RedisConst.DEFAULT_PORT
     password: Optional[str] = None
     db: int = RedisConst.DEFAULT_DB
-    decode_responses: bool = True
+    decode_responses: bool = RedisConst.DEFAULT_DECODE_RESPONSES
 
 @dataclass
 class DeviceConfig:
@@ -58,9 +58,9 @@ class LoggingConfig:
     """Logging configuration."""
     level: str = LoggingConst.DEFAULT_LEVEL
     file: Optional[str] = LoggingConst.DEFAULT_FILE
-    use_threshold: bool = False
-    format: str = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
-    debugging: bool = False
+    use_threshold: bool = LoggingConst.DEFAULT_USE_THRESHOLD
+    format: str = LoggingConst.DEFAULT_FORMAT
+    debugging: bool = LoggingConst.DEFAULT_DEBUGGING
 
 @dataclass
 class BaseStationConfig:
@@ -95,7 +95,7 @@ class BaseStationConfig:
         cls,
         path: Optional[str] = None,
         logger: Optional[logging.Logger] = None
-    ) -> BaseStationConst:
+    ) -> "BaseStationConfig": # Not BaseStationConst!
         """
         Load configuration from 'path' or from default paths.
         Use a child logger if one is passed; otherwise use our module-level logger.
@@ -121,11 +121,7 @@ class BaseStationConfig:
         else:
             # Default search logic
             config = None
-            for config_path in [
-                Path.cwd() / 'config.yaml',
-                Path.home() / '.config' / 'meshtastic' / 'config.yaml',
-                Path('/etc/meshtastic/config.yaml'),
-            ]:
+            for config_path in [Path(p) for p in BaseStationConst.DEFAULT_CONFIG_PATHS]:
                 if config_path.exists():
                     try:
                         config = cls.from_yaml(str(config_path))
