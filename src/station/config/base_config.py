@@ -121,7 +121,7 @@ class BaseStationConfig:
         else:
             # Default search logic
             config = None
-            for config_path in [Path(p) for p in BaseStationConst.DEFAULT_CONFIG_PATHS]:
+            for config_path in [Path(p) for p in BaseStationConst.CONFIG_PATHS]:
                 if config_path.exists():
                     try:
                         config = cls.from_yaml(str(config_path))
