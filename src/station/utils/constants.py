@@ -60,7 +60,8 @@ class LoggingConst:
     """Logging-related constants."""
     DEFAULT_LEVEL = "INFO"
     DEFAULT_FILE = "meshtastic.log"
-    DEFAULT_FORMAT = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
+    CONSOLE_FORMAT = "%(levelname)s:%(name)s:%(message)s"
+    FILE_FORMAT = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
     DEFAULT_USE_THRESHOLD = False
     DEFAULT_DEBUGGING = False
     PACKET_LEVEL = 15  # Custom log levels

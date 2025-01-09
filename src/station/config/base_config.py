@@ -59,7 +59,7 @@ class LoggingConfig:
     level: str = LoggingConst.DEFAULT_LEVEL
     file: Optional[str] = LoggingConst.DEFAULT_FILE
     use_threshold: bool = LoggingConst.DEFAULT_USE_THRESHOLD
-    format: str = LoggingConst.DEFAULT_FORMAT
+    format: str = LoggingConst.FILE_FORMAT
     debugging: bool = LoggingConst.DEFAULT_DEBUGGING
 
 @dataclass

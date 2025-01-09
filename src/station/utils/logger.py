@@ -95,10 +95,6 @@ def configure_logger(
     :param debugging: Enable debug output about logger configuration
     :return: Configured logger
     """
-    if debugging:
-        print(f"Initializing logger: {name}")
-        print(f"Base level: {logging.getLevelName(base_level)}")
-        print(f"Using threshold: {use_threshold}")
 
     logger = logging.getLogger(name)
     
@@ -116,13 +112,13 @@ def configure_logger(
     logger.propagate = False
 
     # Create filter
-    from ..utils.log_filter import LogLevelFilter
+    from src.station.utils.log_filter import LogLevelFilter
     log_filter = LogLevelFilter(numeric_levels, threshold=use_threshold)
 
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(base_level)
-    console_formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+    console_formatter = logging.Formatter(LoggingConst.CONSOLE_FORMAT)
     console_handler.setFormatter(console_formatter)
     console_handler.addFilter(log_filter)
     logger.addHandler(console_handler)
@@ -131,10 +127,15 @@ def configure_logger(
     if log_file:
         file_handler = logging.FileHandler(log_file, mode='a')
         file_handler.setLevel(base_level)
-        file_formatter = logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s')
+        file_formatter = logging.Formatter(LoggingConst.FILE_FORMAT)
         file_handler.setFormatter(file_formatter)
         file_handler.addFilter(log_filter)
         logger.addHandler(file_handler)
+
+    if debugging:
+        print(f"Initializing logger: {name}")
+        print(f"Base level: {logging.getLevelName(base_level)}")
+        print(f"Using threshold: {use_threshold}")
 
     return logger
 
