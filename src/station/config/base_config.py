@@ -22,39 +22,42 @@ import os
 import platform
 import yaml
 import logging
+from src.station.utils.constants import (
+    RedisConst, DeviceConst, LoggingConst, BaseStationConst
+)
 
 @dataclass
 class RedisConfig:
     """Redis connection configuration."""
-    host: str = "localhost"
-    port: int = 6379
+    host: str = RedisConst.DEFAULT_HOST
+    port: int = RedisConst.DEFAULT_PORT
     password: Optional[str] = None
-    db: int = 0
+    db: int = RedisConst.DEFAULT_DB
     decode_responses: bool = True
 
 @dataclass
 class DeviceConfig:
     """Meshtastic device configuration."""
     port: str = field(default_factory=lambda: DeviceConfig.default_port())
-    baud_rate: int = 115200
-    timeout: float = 1.0
+    baud_rate: int = DeviceConst.DEFAULT_BAUD_RATE
+    timeout: float = DeviceConst.DEFAULT_TIMEOUT
 
     @staticmethod
     def default_port() -> str:
         system = platform.system().lower()
         if system == 'linux':
-            return '/dev/ttyACM0'
+            return DeviceConst.DEFAULT_PORT_LINUX
         elif system == 'windows':
-            return 'COM1'
+            return DeviceConst.DEFAULT_PORT_WINDOWS
         elif system == 'darwin':  # macOS
-            return '/dev/tty.usbmodem1'
-        return '/dev/ttyACM0'
+            return DeviceConst.DEFAULT_PORT_MAC 
+        return DeviceConst.DEFAULT_PORT_LINUX
 
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
-    level: str = "INFO"
-    file: Optional[str] = "meshtastic.log"
+    level: str = LoggingConst.DEFAULT_LEVEL
+    file: Optional[str] = LoggingConst.DEFAULT_FILE
     use_threshold: bool = False
     format: str = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
     debugging: bool = False
@@ -65,17 +68,17 @@ class BaseStationConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     device: DeviceConfig = field(default_factory=DeviceConfig)
     log_cfg: LoggingConfig = field(default_factory=LoggingConfig)
-    data_retention_days: int = 30
-    environment: str = "development"
+    data_retention_days: int = BaseStationConst.DEFAULT_DATA_RETENTION_DAYS
+    environment: str = BaseStationConst.DEFAULT_ENVIRONMENT
 
     @classmethod
-    def from_yaml(cls, path: str) -> 'BaseStationConfig':
+    def from_yaml(cls, path: str) -> "BaseStationConfig":
         with open(path, 'r') as f:
             config_dict = yaml.safe_load(f)
         return cls.from_dict(config_dict)
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'BaseStationConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "BaseStationConfig":
         redis_config = RedisConfig(**config_dict.get('redis', {}))
         device_config = DeviceConfig(**config_dict.get('device', {}))
         logging_config = LoggingConfig(**config_dict.get('logging', {}))
@@ -83,8 +86,8 @@ class BaseStationConfig:
             redis=redis_config,
             device=device_config,
             log_cfg=logging_config,
-            data_retention_days=config_dict.get('data_retention_days', 30),
-            environment=config_dict.get('environment', 'development')
+            data_retention_days=config_dict.get('data_retention_days', BaseStationConst.DEFAULT_DATA_RETENTION_DAYS),
+            environment=config_dict.get('environment', BaseStationConst.DEFAULT_ENVIRONMENT)
         )
 
     @classmethod
@@ -92,7 +95,7 @@ class BaseStationConfig:
         cls,
         path: Optional[str] = None,
         logger: Optional[logging.Logger] = None
-    ) -> 'BaseStationConfig':
+    ) -> BaseStationConst:
         """
         Load configuration from 'path' or from default paths.
         Use a child logger if one is passed; otherwise use our module-level logger.
