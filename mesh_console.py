@@ -140,7 +140,7 @@ async def display_stored_data(data_handler):
     if not device_telemetry:
         print("[No device telemetry found]")
     else:
-        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-DeviceConst.MAX_DEVICE_TELEMETRY:]:  # Last 10 entries
+        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_DEVICE_TELEMETRY:]:  # Last 10 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
 
     # Display network telemetry

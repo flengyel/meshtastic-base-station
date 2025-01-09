@@ -62,4 +62,6 @@ class RetentionConst:
     """Data retention constants."""
     DEFAULT_DAYS = 30           # Default retention period in days
     MAX_QUEUE_SIZE = 10000      # Maximum queue size before oldest entries removed
-    CLEANUP_INTERVAL = 3600     # Hourly cleanup in seconds
+    CLEANUP_INTERVAL = 3600     # Hourly cleanup in seconds(meshtastic-base-station) 
+
+

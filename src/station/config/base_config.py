@@ -21,6 +21,7 @@ from pathlib import Path
 import os
 import platform
 import yaml
+import logging
 
 @dataclass
 class RedisConfig:
