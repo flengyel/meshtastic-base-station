@@ -1,4 +1,4 @@
-# log_level_filter.py
+# log_lfilter.py
 #
 # Copyright (C) 2025 Florian Lengyel WM2D
 #

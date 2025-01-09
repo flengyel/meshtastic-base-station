@@ -23,8 +23,7 @@ import serial.tools.list_ports
 from src.station.utils.logger import configure_logger, get_available_levels
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
-from src.station.config.base_config import BaseStationConfig
-import redis # For Redis exceptions
+from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
 
 # Initialize asyncio queue for Redis updates
 redis_update_queue = asyncio.Queue()
@@ -47,8 +46,8 @@ Examples:
     parser.add_argument(
         "--device",
         type=str,
-        default="/dev/ttyACM0",
-        help="Serial interface device (default: /dev/ttyACM0)"
+        default=DeviceConst.DEFAULT_PORT_LINUX,        
+        help=f"Serial interface device (default: {DeviceConst.DEFAULT_PORT_LINUX})"
     )
     
     # Logging configuration
@@ -56,7 +55,7 @@ Examples:
     log_group.add_argument(
         "--log",
         type=str,
-        default="INFO",
+        default=LoggingConst.DEFAULT_LEVEL,
         help=f"Comma-separated list of log levels to include. Available levels: {', '.join(get_available_levels())}"
     )
     log_group.add_argument(
@@ -140,7 +139,7 @@ async def display_stored_data(data_handler):
     if not device_telemetry:
         print("[No device telemetry found]")
     else:
-        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-10:]:  # Last 10 entries
+        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-DeviceConst.MAX_DEVICE_TELEMETRY:]:  # Last 10 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
 
     # Display network telemetry
@@ -151,7 +150,7 @@ async def display_stored_data(data_handler):
     if not network_telemetry:
         print("[No network telemetry found]")
     else:
-        for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-5:]:  # Last 5 entries
+        for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_NETWORK_TELEMETRY:]:  # Last 5 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
 
 
@@ -215,7 +214,7 @@ async def redis_dispatcher(data_handler):
 
                 # Use a shorter timeout to prevent hanging
                 try:
-                    update = await asyncio.wait_for(redis_update_queue.get(), timeout=1.0)
+                    update = await asyncio.wait_for(redis_update_queue.get(), timeout=RedisConst.QUEUE_TIMEOUT)
                     logger.debug(f"Received update type: {update['type']}")
                     
                     # Process the packet
@@ -224,13 +223,13 @@ async def redis_dispatcher(data_handler):
                 except asyncio.TimeoutError:
                     # Periodic heartbeat
                     logger.debug("Dispatcher heartbeat - no updates")
-                    await asyncio.sleep(5.0)
+                    await asyncio.sleep(RedisConst.HEARTBEAT_INTERVAL)
                     continue
                     
             except Exception as e:
                 logger.error(f"Error in dispatcher: {e}", exc_info=True)
                 redis_update_queue.task_done()
-                await asyncio.sleep(1.0)  # Prevent tight error loops
+                await asyncio.sleep(RedisConst.ERROR_SLEEP)  # Prevent tight error loops
                 
     except asyncio.CancelledError:
         logger.info("Dispatcher received cancellation signal")
@@ -259,7 +258,7 @@ async def main():
         name=__name__,
         log_levels=args.log_levels,
         use_threshold=args.threshold,
-        log_file=None if args.no_file_logging else 'meshtastic.log',
+        log_file=None if args.no_file_logging else LoggingConst.DEFAULT_FILE,
         debugging=args.debugging
     )
 
@@ -281,13 +280,13 @@ async def main():
     # Initialize handlers
     try:
         redis_handler = RedisHandler(
-            host=config.redis.host if config else "localhost",
-            port=config.redis.port if config else 6379,
+            host=config.redis.host if config else RedisConst.DEFAULT_HOST,
+            port=config.redis.port if config else RedisConst.DEFAULT_PORT,
             logger=logger
         )    
         if not await redis_handler.verify_connection():
             logger.error(f"Could not connect to Redis at {config.redis.host if config else 'localhost'}:"
-                        f"{config.redis.port if config else 6379}")
+                        f"{config.redis.port if config else RedisConst.DEFAULT_PORT}")
             logger.error("Please check Redis configuration and ensure Redis server is running")
             if args.debugging:
                 logger.debug("See above for connection error details")
