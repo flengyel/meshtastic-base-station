@@ -17,6 +17,7 @@
 
 import argparse
 import asyncio
+import logging
 from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
 import serial.tools.list_ports
@@ -115,9 +116,9 @@ async def display_stored_data(data_handler):
     """Display previously stored data."""
     # Display nodes
     print("\n--- Previously Saved Nodes ---")  # Always print headers
-    logger.debug("Attempting to retrieve formatted nodes...")
+    data_handler.logger.debug("Attempting to retrieve formatted nodes...")
     nodes = await data_handler.get_formatted_nodes()
-    logger.debug(f"Retrieved {len(nodes) if nodes else 0} nodes")
+    data_handler.logger.debug(f"Retrieved {len(nodes) if nodes else 0} nodes")
     if not nodes:
         print("[No nodes found]")
     else:
@@ -126,9 +127,9 @@ async def display_stored_data(data_handler):
 
     # Display messages
     print("\n--- Previously Saved Messages ---")
-    logger.debug("Attempting to retrieve formatted messages...")
+    data_handler.logger.debug("Attempting to retrieve formatted messages...")
     messages = await data_handler.get_formatted_messages()
-    logger.debug(f"Retrieved {len(messages) if messages else 0} messages")
+    data_handler.logger.debug(f"Retrieved {len(messages) if messages else 0} messages")
     if not messages:
         print("[No messages found]")
     else:
@@ -137,9 +138,9 @@ async def display_stored_data(data_handler):
 
     # Display device telemetry
     print("\n--- Previously Saved Device Telemetry ---")
-    logger.debug("Attempting to retrieve device telemetry...")
+    data_handler.logger.debug("Attempting to retrieve device telemetry...")
     device_telemetry = await data_handler.get_formatted_device_telemetry()
-    logger.debug(f"Retrieved {len(device_telemetry) if device_telemetry else 0} device telemetry records")
+    data_handler.logger.debug(f"Retrieved {len(device_telemetry) if device_telemetry else 0} device telemetry records")
     if not device_telemetry:
         print("[No device telemetry found]")
     else:
@@ -148,9 +149,9 @@ async def display_stored_data(data_handler):
 
     # Display network telemetry
     print("\n--- Previously Saved Network Telemetry ---")
-    logger.debug("Attempting to retrieve network telemetry...")
+    data_handler.logger.debug("Attempting to retrieve network telemetry...")
     network_telemetry = await data_handler.get_formatted_network_telemetry()
-    logger.debug(f"Retrieved {len(network_telemetry) if network_telemetry else 0} network telemetry records")
+    data_handler.logger.debug(f"Retrieved {len(network_telemetry) if network_telemetry else 0} network telemetry records")
     if not network_telemetry:
         print("[No network telemetry found]")
     else:
@@ -204,7 +205,7 @@ def create_callbacks(redis_handler, logger):
     # return the callbacks for to subscribe to the message topics in main()
     return on_text_message, on_node_message, on_telemetry_message
 
-def suggest_available_ports():
+def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
     try:
         logger.info("Available ports:")
@@ -224,7 +225,7 @@ async def main():
     args = parse_arguments()
     
     # Set up logging (keep existing configuration)
-    global logger
+    logger = None 
     logger = configure_logger(
         name=__name__,
         log_levels=args.log_levels,
@@ -272,7 +273,22 @@ async def main():
         await display_stored_data(data_handler)
         await redis_handler.close()
         return
+  
+    try:
+        interface = SerialInterface(args.device)
+        logger.debug(f"Connected to serial device: {args.device}")
+    except FileNotFoundError:
+        logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
+        suggest_available_ports(logger)
+        await redis_handler.close()
+        return
+    except Exception as e:
+        logger.error(f"Cannot connect to serial device {args.device}: {e}")
+        suggest_available_ports(logger)
+        await redis_handler.close()
+        return
 
+    # check if gui or console mode
     if args.gui:
         try:
             from src.station.ui.mvc_app import MeshtasticBaseApp
@@ -299,20 +315,7 @@ async def main():
             return
     else:
         # Original CLI mode
-        try:
-            interface = SerialInterface(args.device)
-            logger.debug(f"Connected to serial device: {args.device}")
-        except FileNotFoundError:
-            logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-        except Exception as e:
-            logger.error(f"Cannot connect to serial device {args.device}: {e}")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-
+      
         # Display stored data
         await display_stored_data(data_handler)
 
@@ -345,4 +348,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Program terminated.")
+        print("Program terminated.")
