@@ -24,10 +24,11 @@ import logging
 from src.station.utils.constants import RedisConst
 
 class RedisHandler:
+    redis_queue = asyncio.Queue()  # Add queue here
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
-        self.redis_queue = asyncio.Queue()  # Add queue here
+        
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
             self.logger.debug("Redis handler initialized")
