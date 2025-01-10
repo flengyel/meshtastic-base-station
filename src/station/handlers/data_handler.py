@@ -108,8 +108,7 @@ class MeshtasticDataHandler:
        )
        self.logger.info(
            f"[{processed['timestamp']}] Environment from {processed['from_id']}: "
-           f"temp={metrics['temperature']:.1f}°C, 
-           humidity={metrics['relative_humidity']:.1f}%"
+           f"temp={metrics['temperature']:.1f}°C,humidity={metrics['relative_humidity']:.1f}%"
         )
 
     async def _handle_device_telemetry(self, packet: Dict[str, Any]) -> None:
