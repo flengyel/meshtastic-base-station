@@ -39,16 +39,23 @@ class RedisHandler:
         
         # Define Redis keys
         self.keys = {
-            'messages': 'meshtastic:messages',
-            'nodes': 'meshtastic:nodes',
-            'device_telemetry': 'meshtastic:telemetry:device',
-            'network_telemetry': 'meshtastic:telemetry:network',
-            'environment_telemetry': 'meshtastic:telemetry:environment'
-        }
+            'messages': RedisConst.KEY_MESSAGES,
+            'nodes': RedisConst.KEY_NODES,
+            'device_telemetry': RedisConst.KEY_TELEMETRY_DEVICE, 
+            'network_telemetry': RedisConst.KEY_TELEMETRY_NETWORK, 
+            'environment_telemetry': RedisConst.KEY_TELEMETRY_ENVIRONMENT
+            }
+
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
     async def redis_dispatcher(self, data_handler):
-        """Process Redis updates from the queue."""
+        """
+        Process Redis updates from the queue.
+        
+        Uses a small sleep (RedisConst.DISPATCH_SLEEP) when queue is empty to prevent 
+        CPU hogging while maintaining responsive message processing. The sleep 
+        allows other asyncio tasks to run.
+        """
         try:
             self.logger.info("Redis dispatcher task started.")
             while True:
@@ -59,7 +66,8 @@ class RedisHandler:
                         await data_handler.process_packet(update["packet"], update["type"])
                         self.redis_queue.task_done()
                     else:
-                        await asyncio.sleep(0.01)  # Yield to other tasks if queue is empty
+                        # Yield to other tasks if queue is empty
+                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)  
                 except Exception as e:
                     self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
                     self.redis_queue.task_done()

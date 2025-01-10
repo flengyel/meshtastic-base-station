@@ -25,9 +25,7 @@ organized by functional area.
 # Redis Configuration
 class RedisConst:
     """Redis-related constants."""
-    QUEUE_TIMEOUT = 1.0        # Timeout for queue operations in seconds
-    HEARTBEAT_INTERVAL = 900.0 # 15 minutes between heartbeats
-    ERROR_SLEEP = 1.0         # Sleep after error to prevent tight loops
+    DISPATCH_SLEEP = 0.01      # Sleep when queue is empty to prevent CPU hogging
     DEFAULT_HOST = "localhost"
     DEFAULT_PORT = 6379
     DEFAULT_DB = 0
