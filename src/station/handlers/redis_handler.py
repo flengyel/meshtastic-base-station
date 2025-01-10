@@ -28,7 +28,7 @@ class RedisHandler:
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
-        redis_queue = asyncio.Queue()  # Add queue here
+        self.redis_queue = asyncio.Queue()  # Add queue here
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
