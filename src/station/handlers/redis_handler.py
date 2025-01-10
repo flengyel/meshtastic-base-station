@@ -25,6 +25,7 @@ from src.station.utils.constants import RedisConst
 
 class RedisHandler:
     redis_queue = asyncio.Queue()  # Add queue here
+
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
@@ -79,17 +80,7 @@ class RedisHandler:
                 
         except asyncio.CancelledError:
             self.logger.info("Dispatcher received cancellation signal")
-            remaining = self.redis_queue.qsize()
-            if remaining > 0:
-                self.logger.info(f"Processing {remaining} remaining updates during shutdown")
-                while not self.redis_queue.empty():
-                    update = self.redis_queue.get_nowait()
-                    try:
-                        await data_handler.process_packet(update["packet"], update["type"])
-                    except Exception as e:
-                        self.logger.error(f"Error processing remaining update: {e}")
-                    finally:
-                        self.redis_queue.task_done()
+            self.debug("Redis dispatcher task cancelled.")
             raise
 
     async def verify_connection(self) -> bool:
