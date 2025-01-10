@@ -53,20 +53,17 @@ class RedisHandler:
             self.logger.info("Redis dispatcher task started.")
             while True:
                 try:
-                    qsize = self.redis_queue.qsize()
-                    if qsize > 0:
-                        self.logger.debug(f"Queue size: {qsize}")
                     update = await self.redis_queue.get()
+                    self.logger.debug(f"Processing update type: {update['type']}")  # Add this debug
                     await data_handler.process_packet(update["packet"], update["type"])
                     self.redis_queue.task_done()
                 except Exception as e:
                     self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
                     self.redis_queue.task_done()
-                
         except asyncio.CancelledError:
             self.logger.info("Dispatcher received cancellation signal")
             raise
-    
+
     async def verify_connection(self) -> bool:
         """
         Verify Redis connection is working.
