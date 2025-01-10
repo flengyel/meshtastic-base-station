@@ -53,10 +53,13 @@ class RedisHandler:
             self.logger.info("Redis dispatcher task started.")
             while True:
                 try:
-                    update = await self.redis_queue.get()
-                    self.logger.debug(f"Processing update type: {update['type']}")  # Add this debug
-                    await data_handler.process_packet(update["packet"], update["type"])
-                    self.redis_queue.task_done()
+                    if self.redis_queue.qsize() > 0:
+                        update = await self.redis_queue.get()
+                        self.logger.debug(f"Processing update type: {update['type']}")
+                        await data_handler.process_packet(update["packet"], update["type"])
+                        self.redis_queue.task_done()
+                    else:
+                        await asyncio.sleep(0)  # Yield to other tasks if queue is empty
                 except Exception as e:
                     self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
                     self.redis_queue.task_done()
