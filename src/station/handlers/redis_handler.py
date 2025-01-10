@@ -59,7 +59,7 @@ class RedisHandler:
                         await data_handler.process_packet(update["packet"], update["type"])
                         self.redis_queue.task_done()
                     else:
-                        await asyncio.sleep(0)  # Yield to other tasks if queue is empty
+                        await asyncio.sleep(0.01)  # Yield to other tasks if queue is empty
                 except Exception as e:
                     self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
                     self.redis_queue.task_done()
