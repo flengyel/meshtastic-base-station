@@ -8,10 +8,11 @@ from kivy.lang import Builder
 import asyncio
 from functools import partial
 from typing import Optional
-from ..handlers.redis_handler import RedisHandler
-from ..handlers.data_handler import MeshtasticDataHandler
-from ..config.base_config import BaseStationConfig
-from ..utils.constants import RedisConst
+from src.station.handlers.redis_handler import RedisHandler
+from src.station.handlers.data_handler import MeshtasticDataHandler
+from src.station.config.base_config import BaseStationConfig
+from src.station.utils.constants import RedisConst
+import logging
 
 class MessagesView(BoxLayout):
     """Displays and manages text messages."""
