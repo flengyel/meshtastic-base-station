@@ -79,30 +79,23 @@ class MeshtasticBaseApp(App):
         try:
             while self._running:
                 try:
-                    update = await asyncio.wait_for(
-                        self.redis_queue.get(),
-                        timeout=RedisConst.QUEUE_TIMEOUT
-                    )
-                    
-                    await self.data_handler.process_packet(
-                        update["packet"],
-                        update["type"]
-                    )
-                    
-                    Clock.schedule_once(
-                        partial(self.update_ui, update)
-                    )
-                    
-                    self.redis_queue.task_done()
-                    
-                except asyncio.TimeoutError:
-                    continue
-                    
+                    if self.redis_handler.redis_queue.qsize() > 0:
+                        update = await self.redis_handler.redis_queue.get()
+                        await self.data_handler.process_packet(
+                            update["packet"],
+                            update["type"]
+                        )
+                        Clock.schedule_once(
+                            partial(self.update_ui, update)
+                        )
+                        self.redis_handler.redis_queue.task_done()
+                    else:
+                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
+                except Exception as e:
+                    self.logger.error(f"Error processing messages: {e}")
+                    self.redis_handler.redis_queue.task_done()
         except asyncio.CancelledError:
             self.logger.info("Message processor shutting down")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error processing messages: {e}")
             raise
 
     def update_ui(self, update, dt):
