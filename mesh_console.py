@@ -26,7 +26,6 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
 from src.station.config.base_config import BaseStationConfig
 
-redis_update_queue = RedisHandler.get_queue()
 
 def parse_arguments():
     """Parse command-line arguments with enhanced logging options."""
@@ -158,39 +157,49 @@ async def display_stored_data(data_handler):
         for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_NETWORK_TELEMETRY:]:  # Last 5 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
 
+def create_callbacks(redis_handler, logger):
+    """
+    Closure to create message callbacks with Redis handler.
 
-def on_text_message(packet, interface):
-    """Callback for text messages."""
-    logger.packet(f"on_text_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
+    :param redis_handler: Redis handler
+    
+    :param logger: Logger instance
+    """
+    def on_text_message(packet, interface):
+        """Callback for text messages."""
+        logger.packet(f"on_text_message: {packet}")
+        try:
+            redis_handler.redis_queue.put_nowait({
             "type": "text",
             "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in text message callback: {e}", exc_info=True)
+            })
+        except Exception as e:
+            logger.error(f"Error in text message callback: {e}", exc_info=True)
 
-def on_node_message(packet, interface):
-    """Callback for node messages."""
-    logger.packet(f"on_node_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
+    def on_node_message(packet, interface):
+        """Callback for node messages."""
+        logger.packet(f"on_node_message: {packet}")
+        try:
+            redis_handler.redis_queue.put_nowait({
             "type": "node",
             "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in node message callback: {e}", exc_info=True)
+            })
+        except Exception as e:
+            logger.error(f"Error in node message callback: {e}", exc_info=True)
 
-def on_telemetry_message(packet, interface):
-    """Callback for telemetry messages."""
-    logger.packet(f"on_telemetry_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
-            "type": "telemetry",
-            "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in telemetry callback: {e}", exc_info=True)
+    def on_telemetry_message(packet, interface):
+        """Callback for telemetry messages."""
+        logger.packet(f"on_telemetry_message: {packet}")
+        try:
+            redis_handler.redis_queue.put_nowait({
+                "type": "telemetry",
+                "packet": packet
+            })
+        except Exception as e:
+            logger.error(f"Error in telemetry callback: {e}", exc_info=True)
+
+    # return the callbacks for to subscribe to the message topics in main()
+    return on_text_message, on_node_message, on_telemetry_message
 
 def suggest_available_ports():
     """List available serial ports."""
@@ -254,10 +263,12 @@ async def main():
             app = MeshtasticBaseApp(
                 redis_handler=redis_handler,
                 data_handler=data_handler,
-                redis_queue=redis_update_queue,
                 logger=logger,
                 config=config
             )
+
+            on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
+
             pub.subscribe(on_text_message, "meshtastic.receive.text")
             pub.subscribe(on_node_message, "meshtastic.receive.user")
             pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
@@ -295,6 +306,8 @@ async def main():
 
         await display_stored_data(data_handler)
 
+        on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
+
         pub.subscribe(on_text_message, "meshtastic.receive.text")
         pub.subscribe(on_node_message, "meshtastic.receive.user")
         pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
@@ -318,101 +331,6 @@ async def main():
             await redis_handler.close()
             logger.info("Interface closed.")
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Program terminated.")
-# Keep all existing callback functions unchanged
-def on_text_message(packet, interface):
-    """Callback for text messages."""
-    logger.packet(f"on_text_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
-            "type": "text",
-            "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in text message callback: {e}", exc_info=True)
-
-def on_node_message(packet, interface):
-    """Callback for node messages."""
-    logger.packet(f"on_node_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
-            "type": "node",
-            "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in node message callback: {e}", exc_info=True)
-
-def on_telemetry_message(packet, interface):
-    """Callback for telemetry messages."""
-    logger.packet(f"on_telemetry_message: {packet}")
-    try:
-        redis_update_queue.put_nowait({
-            "type": "telemetry",
-            "packet": packet
-        })
-    except Exception as e:
-        logger.error(f"Error in telemetry callback: {e}", exc_info=True)
-
-async def redis_dispatcher(data_handler):
-    """Process Redis updates from the queue."""
-    try:
-        logger.info("Redis dispatcher task started.")
-        last_size = 0
-        while True:
-            try:
-                current_size = redis_update_queue.qsize()
-                if current_size != last_size:
-                    logger.debug(f"Queue size changed to: {current_size}")
-                    last_size = current_size
-
-                try:
-                    update = await asyncio.wait_for(redis_update_queue.get(), timeout=RedisConst.QUEUE_TIMEOUT)
-                    logger.debug(f"Received update type: {update['type']}")
-                    
-                    await data_handler.process_packet(update["packet"], update["type"])
-                    redis_update_queue.task_done()
-                except asyncio.TimeoutError:
-                    logger.debug("Dispatcher heartbeat - no updates")
-                    await asyncio.sleep(RedisConst.HEARTBEAT_INTERVAL)
-                    continue
-                    
-            except Exception as e:
-                logger.error(f"Error in dispatcher: {e}", exc_info=True)
-                redis_update_queue.task_done()
-                await asyncio.sleep(RedisConst.ERROR_SLEEP)
-                
-    except asyncio.CancelledError:
-        logger.info("Dispatcher received cancellation signal")
-        remaining = redis_update_queue.qsize()
-        if remaining > 0:
-            logger.info(f"Processing {remaining} remaining updates during shutdown")
-            while not redis_update_queue.empty():
-                update = redis_update_queue.get_nowait()
-                try:
-                    await data_handler.process_packet(update["packet"], update["type"])
-                except Exception as e:
-                    logger.error(f"Error processing remaining update: {e}")
-                finally:
-                    redis_update_queue.task_done()
-        logger.debug("Redis dispatcher completed final updates")
-        raise
-
-    def suggest_available_ports():
-        """List available serial ports."""
-        try:
-            logger.info("Available ports:")
-            ports = list(serial.tools.list_ports.comports())
-            if ports:
-                for port in ports:
-                    logger.info(f"  - {port.device}")
-            else:
-                logger.info("  No serial ports detected.")
-        except Exception as e:
-            logger.error(f"Cannot list available ports: {e}")
 
 async def main():
     """Main function to set up the Meshtastic listener."""
@@ -443,6 +361,7 @@ async def main():
         config.redis.port = args.redis_port
 
     # Initialize Redis handler
+    redis_handler = None # assume None for error handling
     try:
         redis_handler = RedisHandler(
             host=config.redis.host,
@@ -459,6 +378,7 @@ async def main():
         return
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+    on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
 
     if args.display_redis:
         logger.info("Displaying Redis data ...")
@@ -472,10 +392,10 @@ async def main():
             app = MeshtasticBaseApp(
                 redis_handler=redis_handler,
                 data_handler=data_handler,
-                redis_queue=redis_update_queue,
                 logger=logger,
                 config=config
             )
+
             # Subscribe to message topics (needed for GUI too)
             pub.subscribe(on_text_message, "meshtastic.receive.text")
             pub.subscribe(on_node_message, "meshtastic.receive.user")
@@ -516,7 +436,7 @@ async def main():
         logger.info("Subscribed to text, user, and telemetry messages.")
 
         # Start Redis dispatcher
-        dispatcher_task = asyncio.create_task(redis_dispatcher(data_handler))
+        dispatcher_task = asyncio.create_task(RedisHandler.redis_dispatcher(data_handler))
         logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
 
         try:
