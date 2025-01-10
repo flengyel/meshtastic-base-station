@@ -26,6 +26,9 @@ from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
 from src.station.config.base_config import BaseStationConfig
+import os
+
+os.environ['KIVY_NO_ARGS'] = '1' # Prevent Kivy from parsing command line arguments
 
 
 def parse_arguments():

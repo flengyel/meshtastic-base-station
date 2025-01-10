@@ -1,4 +1,4 @@
-# src/station/ui/meshtastic_app.py
+# src/station/ui/mvc_app.py
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -13,9 +13,6 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 import logging
-import os
-
-os.environ['KIVY_NO_ARGS'] = '1' # Prevent Kivy from parsing command line arguments
 
 class MessagesView(BoxLayout):
     """Displays and manages text messages."""
