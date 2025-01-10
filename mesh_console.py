@@ -217,123 +217,7 @@ def suggest_available_ports():
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def main():
-    """Main function to set up the Meshtastic listener."""
-    args = parse_arguments()
-    
-    global logger
-    logger = configure_logger(
-        name=__name__,
-        log_levels=args.log_levels,
-        use_threshold=args.threshold,
-        log_file=None if args.no_file_logging else LoggingConst.DEFAULT_FILE,
-        debugging=args.debugging
-    )
-
-    config = None
-    if args.config:
-        config = BaseStationConfig.load(path=args.config, logger=logger)
-    else:
-        config = BaseStationConfig.load(logger=logger)
-        logger.debug(f"Loaded default config from known locations")
-
-    if args.redis_host:
-        config.redis.host = args.redis_host
-    if args.redis_port:
-        config.redis.port = args.redis_port
-
-    try:
-        redis_handler = RedisHandler(
-            host=config.redis.host if config else RedisConst.DEFAULT_HOST,
-            port=config.redis.port if config else RedisConst.DEFAULT_PORT,
-            logger=logger
-        )    
-        if not await redis_handler.verify_connection():
-            logger.error(f"Could not connect to Redis at {config.redis.host if config else 'localhost'}:"
-                        f"{config.redis.port if config else RedisConst.DEFAULT_PORT}")
-            return
-    except Exception as e:
-        logger.error(f"Unexpected error initializing Redis: {e}")
-        if args.debugging:
-            logger.debug("Initialization error details:", exc_info=True)
-        return
-
-    data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-
-    if args.gui:
-        try:
-            from src.station.ui.mvc_app import MeshtasticBaseApp
-            app = MeshtasticBaseApp(
-                redis_handler=redis_handler,
-                data_handler=data_handler,
-                logger=logger,
-                config=config
-            )
-
-            on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
-
-            pub.subscribe(on_text_message, "meshtastic.receive.text")
-            pub.subscribe(on_node_message, "meshtastic.receive.user")
-            pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
-            
-            await app.start()
-            
-        except ImportError:
-            logger.error("GUI mode requires Kivy. Please install with: pip install kivy")
-            await redis_handler.close()
-            return
-        except Exception as e:
-            logger.error(f"Error starting GUI: {e}")
-            await redis_handler.close()
-            return
-    else:
-        if args.display_redis:
-            logger.info("Displaying Redis data ...")
-            await display_stored_data(data_handler)
-            await redis_handler.close()
-            return
-
-        try:
-            interface = SerialInterface(args.device)
-            logger.debug(f"Connected to serial device: {args.device}")
-        except FileNotFoundError:
-            logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-        except Exception as e:
-            logger.error(f"Cannot connect to serial device {args.device}: {e}")
-            suggest_available_ports()
-            await redis_handler.close()
-            return
-
-        await display_stored_data(data_handler)
-
-        on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
-
-        pub.subscribe(on_text_message, "meshtastic.receive.text")
-        pub.subscribe(on_node_message, "meshtastic.receive.user")
-        pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
-        logger.info("Subscribed to text, user, and telemetry messages.")
-
-        dispatcher_task = asyncio.create_task(redis_handler.redis_dispatcher(data_handler))
-        logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
-
-        try:
-            logger.info("Listening for messages... Press Ctrl+C to exit.")
-            await dispatcher_task
-        except KeyboardInterrupt:
-            logger.info("Shutdown initiated...")
-            dispatcher_task.cancel()
-            try:
-                await dispatcher_task
-            except asyncio.CancelledError:
-                pass
-        finally:
-            interface.close()
-            await redis_handler.close()
-            logger.info("Interface closed.")
-
+## Main function. There should be only one main function in the program. Not three.
 
 async def main():
     """Main function to set up the Meshtastic listener."""
@@ -439,7 +323,7 @@ async def main():
         logger.info("Subscribed to text, user, and telemetry messages.")
 
         # Start Redis dispatcher
-        dispatcher_task = asyncio.create_task(RedisHandler.redis_dispatcher(data_handler))
+        dispatcher_task = asyncio.create_task(redis_handler.redis_dispatcher(data_handler))
         logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
 
         try:
