@@ -1,0 +1,48 @@
+<MessagesView>:
+    orientation: 'vertical'
+    Label:
+        text: 'Messages'
+
+<NodesView>:
+    orientation: 'vertical'
+    Label:
+        text: 'Nodes'
+
+<DeviceTelemetryView>:
+    orientation: 'vertical'
+    Label:
+        text: 'Device Telemetry'
+
+<NetworkTelemetryView>:
+    orientation: 'vertical'
+    Label:
+        text: 'Network Telemetry'
+
+<EnvironmentTelemetryView>:
+    orientation: 'vertical'
+    Label:
+        text: 'Environment Telemetry'
+
+<MeshtasticGui>:
+    TabbedPanel:
+        do_default_tab: False
+        
+        TabbedPanelItem:
+            text: 'Messages'
+            MessagesView:
+        
+        TabbedPanelItem:
+            text: 'Nodes'
+            NodesView:
+        
+        TabbedPanelItem:
+            text: 'Device Telemetry'
+            DeviceTelemetryView:
+        
+        TabbedPanelItem:
+            text: 'Network Telemetry'
+            NetworkTelemetryView:
+        
+        TabbedPanelItem:
+            text: 'Environment Telemetry'
+            EnvironmentTelemetryView:

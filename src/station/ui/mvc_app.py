@@ -14,6 +14,9 @@ from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 import logging
 
+from kivy.lang import Builder
+Builder.load_file('src/station/ui/meshtasticbase.kv')
+
 class MessagesView(BoxLayout):
     """Displays and manages text messages."""
     def update_messages(self, packet):
