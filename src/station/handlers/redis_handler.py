@@ -21,7 +21,7 @@ import asyncio
 import redis.asyncio as aioredis
 import redis.exceptions
 import logging
-from src.station.utils import RedisConst
+from src.station.utils.constants import RedisConst
 
 class RedisHandler:
     def __init__(self, host="localhost", port=6379, logger=None):
