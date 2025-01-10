@@ -161,9 +161,12 @@ def create_callbacks(redis_handler, logger):
     """
     Closure to create message callbacks with Redis handler.
 
-    :param redis_handler: Redis handler
-    
-    :param logger: Logger instance
+    Args:
+        :param redis_handler: Redis handler
+        :param logger: Logger instance
+
+    Returns:
+        :return: Tuple of message callbacks    
     """
     def on_text_message(packet, interface):
         """Callback for text messages."""
