@@ -17,20 +17,19 @@
 
 # redis_handler.py
 
+import asyncio
 import redis.asyncio as aioredis
 import redis.exceptions
 import logging
+from src.station.utils import RedisConst
 
 class RedisHandler:
-    """
-    Minimal Redis handler that stores raw JSON data without making assumptions about structure.
-    """
-
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
+        self.redis_queue = asyncio.Queue()  # Add queue here
         try:
-            self.client = aioredis.Redis(host=host, port=port, decode_responses=True)
+            self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
             self.logger.debug("Redis handler initialized")
         except Exception as e:
             self.logger.error(f"Failed to create Redis client: {e}", exc_info=True)
@@ -45,6 +44,52 @@ class RedisHandler:
             'environment_telemetry': 'meshtastic:telemetry:environment'
         }
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
+
+    @classmethod
+    def get_queue(cls):
+        return cls.redis_queue
+
+    async def redis_dispatcher(self, data_handler):
+        """Process Redis updates from the queue."""
+        try:
+            self.logger.info("Redis dispatcher task started.")
+            last_size = 0
+            while True:
+                try:
+                    current_size = self.redis_queue.qsize()
+                    if current_size != last_size:
+                        self.logger.debug(f"Queue size changed to: {current_size}")
+                        last_size = current_size
+
+                    update = await asyncio.wait_for(self.redis_queue.get(), timeout=RedisConst.QUEUE_TIMEOUT)
+                    self.logger.debug(f"Received update type: {update['type']}")
+                    
+                    await data_handler.process_packet(update["packet"], update["type"])
+                    self.redis_queue.task_done()
+                except asyncio.TimeoutError:
+                    self.logger.debug("Dispatcher heartbeat - no updates")
+                    await asyncio.sleep(RedisConst.HEARTBEAT_INTERVAL)
+                    continue
+                    
+                except Exception as e:
+                    self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
+                    self.redis_queue.task_done()
+                    await asyncio.sleep(RedisConst.ERROR_SLEEP)
+                
+        except asyncio.CancelledError:
+            self.logger.info("Dispatcher received cancellation signal")
+            remaining = self.redis_queue.qsize()
+            if remaining > 0:
+                self.logger.info(f"Processing {remaining} remaining updates during shutdown")
+                while not self.redis_queue.empty():
+                    update = self.redis_queue.get_nowait()
+                    try:
+                        await data_handler.process_packet(update["packet"], update["type"])
+                    except Exception as e:
+                        self.logger.error(f"Error processing remaining update: {e}")
+                    finally:
+                        self.redis_queue.task_done()
+            raise
 
     async def verify_connection(self) -> bool:
         """

@@ -42,13 +42,11 @@ class EnvironmentTelemetryView(BoxLayout):
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: RedisHandler,
                  data_handler: MeshtasticDataHandler,
-                 redis_queue: asyncio.Queue,
                  logger: Optional[logging.Logger] = None,
                  config: Optional[BaseStationConfig] = None):
         super().__init__()
         self.redis_handler = redis_handler
         self.data_handler = data_handler
-        self.redis_queue = redis_queue
         self.logger = logger
         self.config = config
         self._running = False
@@ -166,5 +164,13 @@ class MeshtasticBaseApp(App):
                 task.cancel()
 
     async def start(self):
-        """Start the application."""
-        return await self.app_func()
+        """Start GUI and dispatcher."""
+        try:
+            self._running = True
+            self.logger.info("Starting Meshtastic Base Station GUI")
+            dispatcher_task = asyncio.create_task(self.redis_handler.redis_dispatcher(self.data_handler))
+            self._tasks.append(dispatcher_task)
+            return await self.app_func()
+        except Exception as e:
+            self.logger.error(f"GUI startup error: {e}")
+            raise

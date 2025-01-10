@@ -15,23 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-# mesh_console.py
-#
-# Copyright (C) 2024, 2025 Florian Lengyel WM2D
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
-
 import argparse
 import asyncio
 from pubsub import pub
@@ -43,8 +26,7 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
 from src.station.config.base_config import BaseStationConfig
 
-# Initialize asyncio queue for Redis updates
-redis_update_queue = asyncio.Queue()
+redis_update_queue = RedisHandler.get_queue()
 
 def parse_arguments():
     """Parse command-line arguments with enhanced logging options."""
@@ -223,54 +205,6 @@ def suggest_available_ports():
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def redis_dispatcher(data_handler):
-    """Process Redis updates from the queue."""
-    try:
-        logger.info("Redis dispatcher task started.")
-        last_size = 0
-        while True:
-            try:
-                current_size = redis_update_queue.qsize()
-                if current_size != last_size:
-                    logger.debug(f"Queue size changed to: {current_size}")
-                    last_size = current_size
-
-                # Use a shorter timeout to prevent hanging
-                try:
-                    update = await asyncio.wait_for(redis_update_queue.get(), timeout=RedisConst.QUEUE_TIMEOUT)
-                    logger.debug(f"Received update type: {update['type']}")
-
-                    # Process the packet
-                    await data_handler.process_packet(update["packet"], update["type"])
-                    redis_update_queue.task_done()
-                except asyncio.TimeoutError:
-                    # Periodic heartbeat
-                    logger.debug("Dispatcher heartbeat - no updates")
-                    await asyncio.sleep(RedisConst.HEARTBEAT_INTERVAL)
-                    continue
-
-            except Exception as e:
-                logger.error(f"Error in dispatcher: {e}", exc_info=True)
-                redis_update_queue.task_done()
-                await asyncio.sleep(RedisConst.ERROR_SLEEP)  # Prevent tight error loops
-
-    except asyncio.CancelledError:
-        logger.info("Dispatcher received cancellation signal")
-        # Process remaining updates during shutdown
-        remaining = redis_update_queue.qsize()
-        if remaining > 0:
-            logger.info(f"Processing {remaining} remaining updates during shutdown")
-            while not redis_update_queue.empty():
-                update = redis_update_queue.get_nowait()
-                try:
-                    await data_handler.process_packet(update["packet"], update["type"])
-                except Exception as e:
-                    logger.error(f"Error processing remaining update: {e}")
-                finally:
-                    redis_update_queue.task_done()
-        logger.debug("Redis dispatcher completed final updates")
-        raise  # Re-raise to ensure proper task cleanup
-
 async def main():
     """Main function to set up the Meshtastic listener."""
     args = parse_arguments()
@@ -316,7 +250,7 @@ async def main():
 
     if args.gui:
         try:
-            from src.station.ui.meshtastic_app import MeshtasticBaseApp
+            from src.station.ui.mvc_app import MeshtasticBaseApp
             app = MeshtasticBaseApp(
                 redis_handler=redis_handler,
                 data_handler=data_handler,
@@ -366,7 +300,7 @@ async def main():
         pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
         logger.info("Subscribed to text, user, and telemetry messages.")
 
-        dispatcher_task = asyncio.create_task(redis_dispatcher(data_handler))
+        dispatcher_task = asyncio.create_task(redis_handler.redis_dispatcher(data_handler))
         logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
 
         try:
@@ -534,7 +468,7 @@ async def main():
 
     if args.gui:
         try:
-            from src.station.ui.meshtastic_app import MeshtasticBaseApp
+            from src.station.ui.mvc_app import MeshtasticBaseApp
             app = MeshtasticBaseApp(
                 redis_handler=redis_handler,
                 data_handler=data_handler,
