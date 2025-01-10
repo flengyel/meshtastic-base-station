@@ -80,7 +80,7 @@ class RedisHandler:
                 
         except asyncio.CancelledError:
             self.logger.info("Dispatcher received cancellation signal")
-            self.debug("Redis dispatcher task cancelled.")
+            self.logger.debug("Redis dispatcher task cancelled.")
             raise
 
     async def verify_connection(self) -> bool:
