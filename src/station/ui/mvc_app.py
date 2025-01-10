@@ -13,6 +13,9 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 import logging
+import os
+
+os.environ['KIVY_NO_ARGS'] = '1' # Prevent Kivy from parsing command line arguments
 
 class MessagesView(BoxLayout):
     """Displays and manages text messages."""
