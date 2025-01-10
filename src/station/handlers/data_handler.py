@@ -52,8 +52,10 @@ class MeshtasticDataHandler:
         try:
             self.logger.debug(f"Processing {packet_type} packet")
             portnum = packet['decoded']['portnum']
-            
+            self.logger.debug(f"Portnum: {portnum}") # Claude and Copilot agreed on this line   
             handler = self.packet_handlers.get(portnum)
+            self.logger.debug(f"Handler found: {handler is not None} for {portnum}")
+            
             if handler:
                 await handler(packet)
             else:
