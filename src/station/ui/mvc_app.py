@@ -14,7 +14,7 @@ from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 import logging
 
-from kivy.lang import Builder
+# Load the Kivy UI definition
 Builder.load_file('src/station/ui/meshtasticbase.kv')
 
 class MessagesView(BoxLayout):
@@ -41,6 +41,11 @@ class EnvironmentTelemetryView(BoxLayout):
     """Shows environmental sensor data."""
     def update_telemetry(self, packet):
         pass  # Will implement environmental data display
+
+# Root widget for the application
+class MeshtasticGui(BoxLayout):
+    """Root widget for the application."""
+    pass
 
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: RedisHandler,
