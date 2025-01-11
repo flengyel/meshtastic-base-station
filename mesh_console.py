@@ -28,8 +28,8 @@ from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, L
 from src.station.config.base_config import BaseStationConfig
 import os
 
-os.environ['KIVY_NO_ARGS'] = '1' # Prevent Kivy from parsing command line arguments
-
+os.environ["KIVY_NO_ARGS"] = "1" # Prevent Kivy from parsing command-line arguments
+os.environ["KIVY_NO_CONSOLELOG"] = "1" # Prevent Kivy from logging to console
 
 def parse_arguments():
     """Parse command-line arguments with enhanced logging options."""
@@ -254,11 +254,19 @@ async def main():
     # Initialize Redis handler
     redis_handler = None # assume None for error handling
     try:
-        redis_handler = RedisHandler(
-            host=config.redis.host,
-            port=config.redis.port,
-            logger=logger
-        )    
+        if args.gui:
+            from src.station.ui.gui_redis_handler import GuiRedisHandler
+            redis_handler = GuiRedisHandler(
+                host=config.redis.host,
+                port=config.redis.port,
+                logger=logger
+            )
+        else:
+            redis_handler = RedisHandler(
+                host=config.redis.host,
+                port=config.redis.port,
+                logger=logger
+            )    
         if not await redis_handler.verify_connection():
             logger.error(f"Could not connect to Redis at {config.redis.host}:{config.redis.port}")
             return

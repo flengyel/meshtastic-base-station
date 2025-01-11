@@ -1,10 +1,13 @@
 # src/station/ui/mvc_app.py
-
+# Description: Meshtastic Base Station GUI using Kivy and MVC architecture
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.lang import Builder
+# Python & meshtastic base station imports
 import asyncio
 from functools import partial
 from typing import Optional
@@ -13,14 +16,26 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 import logging
+from pubsub import pub
 
 # Load the Kivy UI definition
 Builder.load_file('src/station/ui/meshtasticbase.kv')
 
 class MessagesView(BoxLayout):
-    """Displays and manages text messages."""
-    def update_messages(self, packet):
-        pass  # Will implement message display logic
+    """Displays incoming messages."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
+        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        self.container.bind(minimum_height=self.container.setter('height'))
+        self.scroll.add_widget(self.container)
+        self.add_widget(self.scroll)
+
+    def update_messages(self, messages):
+        self.container.clear_widgets()
+        for message in messages:
+            self.container.add_widget(Label(text=message['text'], size_hint_y=None, height=40))
 
 class NodesView(BoxLayout):
     """Displays node information and status."""
@@ -83,39 +98,29 @@ class MeshtasticBaseApp(App):
         return self.root
 
     async def process_messages(self):
-        """Process messages from redis_queue."""
+        """Listen for processed messages and update UI."""
         try:
+            pub.subscribe(self.on_processed_message, "meshtastic.processed")
             while self._running:
-                try:
-                    if self.redis_handler.redis_queue.qsize() > 0:
-                        update = await self.redis_handler.redis_queue.get()
-                        await self.data_handler.process_packet(
-                            update["packet"],
-                            update["type"]
-                        )
-                        Clock.schedule_once(
-                            partial(self.update_ui, update)
-                        )
-                        self.redis_handler.redis_queue.task_done()
-                    else:
-                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-                except Exception as e:
-                    self.logger.error(f"Error processing messages: {e}")
-                    self.redis_handler.redis_queue.task_done()
+                await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
         except asyncio.CancelledError:
             self.logger.info("Message processor shutting down")
             raise
 
+    def on_processed_message(self, update):
+        """Handle processed message from dispatcher."""
+        Clock.schedule_once(lambda dt: self.update_ui(update, dt))
+
     def update_ui(self, update, dt):
-        """Route updates to appropriate views."""
         try:
             update_type = update["type"]
             packet = update["packet"]
-            
             if update_type == "text":
-                self.views['messages'].update_messages(packet)
+                messages = self.data_handler.get_formatted_messages()
+                self.views['messages'].update_messages(messages)
             elif update_type == "node":
-                self.views['nodes'].update_nodes(packet)
+                nodes = self.data_handler.get_formatted_nodes()
+                self.views['nodes'].update_nodes(nodes)
             elif update_type == "telemetry":
                 telemetry_type = self._get_telemetry_type(packet)
                 if telemetry_type == "device":
@@ -124,7 +129,6 @@ class MeshtasticBaseApp(App):
                     self.views['network_telemetry'].update_telemetry(packet)
                 elif telemetry_type == "environment":
                     self.views['environment_telemetry'].update_telemetry(packet)
-                
         except Exception as e:
             self.logger.error(f"Error updating UI: {e}")
 
