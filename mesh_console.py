@@ -18,14 +18,14 @@
 import argparse
 import asyncio
 import logging
-from pubsub import pub
 from meshtastic.serial_interface import SerialInterface
 import serial.tools.list_ports
 from src.station.utils.logger import configure_logger, get_available_levels
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
-from src.station.utils.constants import RedisConst, DisplayConst, DeviceConst, LoggingConst
+from src.station.utils.constants import DisplayConst, DeviceConst, LoggingConst
 from src.station.config.base_config import BaseStationConfig
+from src.station.handlers.meshtastic_handler import MeshtasticHandler
 import os
 
 os.environ["KIVY_NO_ARGS"] = "1" # Prevent Kivy from parsing command-line arguments
@@ -161,52 +161,6 @@ async def display_stored_data(data_handler):
         for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_NETWORK_TELEMETRY:]:  # Last 5 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
 
-def create_callbacks(redis_handler, logger):
-    """
-    Closure to create message callbacks with Redis handler.
-
-    Args:
-        :param redis_handler: Redis handler
-        :param logger: Logger instance
-
-    Returns:
-        :return: Tuple of message callbacks    
-    """
-    def on_text_message(packet, interface):
-        """Callback for text messages."""
-        logger.packet(f"on_text_message: {packet}")
-        try:
-            redis_handler.redis_queue.put_nowait({
-            "type": "text",
-            "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in text message callback: {e}", exc_info=True)
-
-    def on_node_message(packet, interface):
-        """Callback for node messages."""
-        logger.packet(f"on_node_message: {packet}")
-        try:
-            redis_handler.redis_queue.put_nowait({
-            "type": "node",
-            "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in node message callback: {e}", exc_info=True)
-
-    def on_telemetry_message(packet, interface):
-        """Callback for telemetry messages."""
-        logger.packet(f"on_telemetry_message: {packet}")
-        try:
-            redis_handler.redis_queue.put_nowait({
-                "type": "telemetry",
-                "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in telemetry callback: {e}", exc_info=True)
-
-    # return the callbacks for to subscribe to the message topics in main()
-    return on_text_message, on_node_message, on_telemetry_message
 
 def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
@@ -237,7 +191,7 @@ async def main():
         debugging=args.debugging
     )
 
-    # Load config
+    # Load config     
     config = None
     if args.config:
         config = BaseStationConfig.load(path=args.config, logger=logger)
@@ -277,7 +231,9 @@ async def main():
         return
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-    on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
+    
+    
+    #on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
 
     if args.display_redis:
         logger.info("Displaying Redis data ...")
@@ -288,6 +244,12 @@ async def main():
     try:
         interface = SerialInterface(args.device)
         logger.debug(f"Connected to serial device: {args.device}")
+
+        meshtastic_handler = MeshtasticHandler(redis_handler, logger)
+        interface.onTextMessage = meshtastic_handler.on_text_message
+        interface.onNodeMessage = meshtastic_handler.on_node_message
+        interface.onTelemetryMessage = meshtastic_handler.on_telemetry_message
+
     except FileNotFoundError:
         logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
         suggest_available_ports(logger)
@@ -310,11 +272,7 @@ async def main():
                 config=config
             )
 
-            # Subscribe to message topics (needed for GUI too)
-            pub.subscribe(on_text_message, "meshtastic.receive.text")
-            pub.subscribe(on_node_message, "meshtastic.receive.user")
-            pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
-            
+          
             await app.start()
         except ImportError:
             logger.error("GUI mode requires Kivy. Please install with: pip install kivy")
@@ -325,31 +283,18 @@ async def main():
             await redis_handler.close()
             return
     else:
-        # Original CLI mode
+        # CLI mode
       
         # Display stored data
         await display_stored_data(data_handler)
+        logger.info("Listening for messages... Type Ctrl+C to exit.")
 
-        # Subscribe to message topics
-        pub.subscribe(on_text_message, "meshtastic.receive.text")
-        pub.subscribe(on_node_message, "meshtastic.receive.user")
-        pub.subscribe(on_telemetry_message, "meshtastic.receive.telemetry")
-        logger.info("Subscribed to text, user, and telemetry messages.")
-
-        # Start Redis dispatcher
-        dispatcher_task = asyncio.create_task(redis_handler.redis_dispatcher(data_handler))
-        logger.debug(f"Created redis_dispatcher task: {dispatcher_task}")
 
         try:
-            logger.info("Listening for messages... Press Ctrl+C to exit.")
-            await dispatcher_task
+            while True:
+                await asyncio.sleep(1)
         except KeyboardInterrupt:
             logger.info("Shutdown initiated...")
-            dispatcher_task.cancel()
-            try:
-                await dispatcher_task
-            except asyncio.CancelledError:
-                pass
         finally:
             interface.close()
             await redis_handler.close()

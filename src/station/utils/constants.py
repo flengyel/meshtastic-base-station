@@ -30,12 +30,21 @@ class RedisConst:
     DEFAULT_PORT = 6379
     DEFAULT_DB = 0
     DEFAULT_DECODE_RESPONSES = True
+    
     # Redis key names
     KEY_MESSAGES = "meshtastic:messages"
     KEY_NODES = "meshtastic:nodes"
     KEY_TELEMETRY_DEVICE = "meshtastic:telemetry:device"
     KEY_TELEMETRY_NETWORK = "meshtastic:telemetry:network"
     KEY_TELEMETRY_ENVIRONMENT = "meshtastic:telemetry:environment"
+    
+    # Redis channels for pubsub
+    CHANNEL_TEXT = "meshtastic.text"
+    CHANNEL_NODE = "meshtastic.node"
+    CHANNEL_TELEMETRY_DEVICE = "meshtastic.telemetry.device"
+    CHANNEL_TELEMETRY_NETWORK = "meshtastic.telemetry.network"
+    CHANNEL_TELEMETRY_ENVIRONMENT = "meshtastic.telemetry.environment"
+    CHANNEL_PROCESSED = "meshtastic.processed"  # For GUI updates
 
 # Device Configuration
 class DeviceConst:

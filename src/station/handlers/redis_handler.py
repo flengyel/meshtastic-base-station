@@ -21,6 +21,7 @@ import asyncio
 import redis.asyncio as aioredis
 import redis.exceptions
 import logging
+import json
 from src.station.utils.constants import RedisConst
 
 class RedisHandler:
@@ -32,12 +33,13 @@ class RedisHandler:
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
+            self.pubsub = self.client.pubsub()
             self.logger.debug("Redis handler initialized")
         except Exception as e:
             self.logger.error(f"Failed to create Redis client: {e}", exc_info=True)
             raise
         
-        # Define Redis keys
+        # Define Redis keys for data storage
         self.keys = {
             'messages': RedisConst.KEY_MESSAGES,
             'nodes': RedisConst.KEY_NODES,
@@ -48,32 +50,26 @@ class RedisHandler:
 
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
-    async def redis_dispatcher(self, data_handler):
-        """
-        Process Redis updates from the queue.
-        
-        Uses a small sleep (RedisConst.DISPATCH_SLEEP) when queue is empty to prevent 
-        CPU hogging while maintaining responsive message processing. The sleep 
-        allows other asyncio tasks to run.
-        """
-        try:
-            self.logger.info("Redis dispatcher task started.")
-            while True:
-                try:
-                    if self.redis_queue.qsize() > 0:
-                        update = await self.redis_queue.get()
-                        self.logger.debug(f"Processing update type: {update['type']}")
-                        await data_handler.process_packet(update["packet"], update["type"])
-                        self.redis_queue.task_done()
-                    else:
-                        # Yield to other tasks if queue is empty
-                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)  
-                except Exception as e:
-                    self.logger.error(f"Error in dispatcher: {e}", exc_info=True)
-                    self.redis_queue.task_done()
-        except asyncio.CancelledError:
-            self.logger.info("Dispatcher received cancellation signal")
-            raise
+    
+    async def subscribe(self, channels):
+        """Subscribe to specified channels."""
+        await self.pubsub.subscribe(*channels)
+        self.logger.info(f"Subscribed to channels: {channels}")
+
+    async def listen(self):
+        """Listen for messages on subscribed channels."""
+        async for message in self.pubsub.listen():
+            if message["type"] == "message":
+                yield message
+
+    async def publish(self, channel, data):
+        """Publish data to a channel."""
+        await self.client.publish(channel, json.dumps(data))
+
+    async def close(self):
+        """Close Redis connection."""
+        await self.pubsub.close()
+        await self.client.close()
 
     async def verify_connection(self) -> bool:
         """
@@ -183,8 +179,5 @@ class RedisHandler:
         """Load environment telemetry data."""
         return await self.load(self.keys['environment_telemetry'], 0, limit)
 
-    async def close(self):
-        """Close Redis connection."""
-        await self.client.close()
 
 
