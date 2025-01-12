@@ -293,7 +293,7 @@ async def main():
 
         try:
             while True:
-                await asyncio.sleep(RedisConst.LISTEN_INTERVAL)
+                await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
         except KeyboardInterrupt:
             logger.info("Shutdown initiated...")
         finally:
