@@ -249,6 +249,10 @@ async def main():
         interface.onTextMessage = meshtastic_handler.on_text_message
         interface.onNodeMessage = meshtastic_handler.on_node_message
         interface.onTelemetryMessage = meshtastic_handler.on_telemetry_message
+        
+        # Start message publisher
+        publisher_task = asyncio.create_task(redis_handler.message_publisher())
+        logger.debug(f"Created publisher task: {publisher_task}")
 
     except FileNotFoundError:
         logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
@@ -289,12 +293,12 @@ async def main():
         await display_stored_data(data_handler)
         logger.info("Listening for messages... Type Ctrl+C to exit.")
 
-
         try:
             while True:
                 await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
         except KeyboardInterrupt:
             logger.info("Shutdown initiated...")
+            publisher_task.cancel()
         finally:
             interface.close()
             await redis_handler.close()

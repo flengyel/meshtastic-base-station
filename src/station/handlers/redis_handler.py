@@ -56,10 +56,12 @@ class RedisHandler:
             self.logger.info("Message publisher task started")
             while True:
                 try:
+                    self.logger.debug(f"Queue size in publisher: {self.message_queue.qsize()}")  # Add this
                     if self.message_queue.qsize() > 0:
                         message = await self.message_queue.get()
+                        self.logger.debug(f"Got message from queue: {message['type']}")  # Add this
                         msg_type = message["type"]
-                    
+
                         # Choose channel based on message type
                         if msg_type == "text":
                             channel = RedisConst.CHANNEL_TEXT
