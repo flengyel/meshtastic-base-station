@@ -13,17 +13,37 @@ class MeshtasticHandler:
         self.redis_handler = redis_handler
         self.logger = logger or logging.getLogger(__name__)
 
-    def on_text_message(self, packet: dict, interface: any) -> None:
+#    def on_text_message(self, packet: dict, interface: any) -> None:
+#        """Callback for text messages."""
+#        self.logger.packet(f"on_text_message: {packet}")
+#        try:
+#            asyncio.run_coroutine_threadsafe(
+#                self.redis_handler.publish(RedisConst.CHANNEL_TEXT, {
+#                    "type": "text",
+#                     "packet": packet
+#               }),
+#                asyncio.get_running_loop()
+#            )
+#        except Exception as e:
+#            self.logger.error(f"Error in text message callback: {e}", exc_info=True)
+
+    def on_text_message(self, packet, interface):
         """Callback for text messages."""
+        self.logger.debug("Enter on_text_message callback")
         self.logger.packet(f"on_text_message: {packet}")
         try:
-            asyncio.run_coroutine_threadsafe(
+            loop = asyncio.get_running_loop()
+            self.logger.debug(f"Got event loop: {loop}")
+            future = asyncio.run_coroutine_threadsafe(
                 self.redis_handler.publish(RedisConst.CHANNEL_TEXT, {
                     "type": "text",
                     "packet": packet
                 }),
-                asyncio.get_running_loop()
+                loop
             )
+            self.logger.debug("Scheduled coroutine")
+            result = future.result()  # Wait for completion
+            self.logger.debug(f"Publish result: {result}")
         except Exception as e:
             self.logger.error(f"Error in text message callback: {e}", exc_info=True)
 
