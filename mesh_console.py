@@ -26,6 +26,7 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import DisplayConst, DeviceConst, LoggingConst
 from src.station.config.base_config import BaseStationConfig
 from src.station.handlers.meshtastic_handler import MeshtasticHandler
+from src.station.utils.constants import RedisConst
 import os
 
 os.environ["KIVY_NO_ARGS"] = "1" # Prevent Kivy from parsing command-line arguments
@@ -292,7 +293,7 @@ async def main():
 
         try:
             while True:
-                await asyncio.sleep(1)
+                await asyncio.sleep(RedisConst.LISTEN_INTERVAL)
         except KeyboardInterrupt:
             logger.info("Shutdown initiated...")
         finally:
