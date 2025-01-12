@@ -234,7 +234,6 @@ async def main():
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
     
     
-    #on_text_message, on_node_message, on_telemetry_message = create_callbacks(redis_handler, logger)
 
     if args.display_redis:
         logger.info("Displaying Redis data ...")
@@ -246,7 +245,7 @@ async def main():
         interface = SerialInterface(args.device)
         logger.debug(f"Connected to serial device: {args.device}")
 
-        meshtastic_handler = MeshtasticHandler(redis_handler, logger)
+        meshtastic_handler = MeshtasticHandler(redis_handler.message_queue, logger)
         interface.onTextMessage = meshtastic_handler.on_text_message
         interface.onNodeMessage = meshtastic_handler.on_node_message
         interface.onTelemetryMessage = meshtastic_handler.on_telemetry_message

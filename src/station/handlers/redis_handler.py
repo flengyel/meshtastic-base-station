@@ -29,7 +29,7 @@ class RedisHandler:
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
-        self.redis_queue = asyncio.Queue()  # Add queue here
+        self.message_queue = asyncio.Queue()  # Add queue here
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
@@ -50,7 +50,48 @@ class RedisHandler:
 
         self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
 
-    
+    async def message_publisher(self):
+        """Publishes messages from queue to Redis channels."""
+        try:
+            self.logger.info("Message publisher task started")
+            while True:
+                try:
+                    if self.message_queue.qsize() > 0:
+                        message = await self.message_queue.get()
+                        msg_type = message["type"]
+                    
+                        # Choose channel based on message type
+                        if msg_type == "text":
+                            channel = RedisConst.CHANNEL_TEXT
+                        elif msg_type == "node":
+                            channel = RedisConst.CHANNEL_NODE
+                        elif msg_type == "telemetry":
+                            # Determine telemetry type
+                            packet = message["packet"]
+                            telemetry = packet['decoded'].get('telemetry', {})
+                            if 'deviceMetrics' in telemetry:
+                                channel = RedisConst.CHANNEL_TELEMETRY_DEVICE
+                            elif 'localStats' in telemetry:
+                                channel = RedisConst.CHANNEL_TELEMETRY_NETWORK
+                            elif 'environmentMetrics' in telemetry:
+                                channel = RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
+                            else:
+                                self.logger.warning(f"Unknown telemetry type: {packet}")
+                                continue
+                            
+                        await self.publish(channel, message)
+                        self.message_queue.task_done()
+                    else:
+                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error publishing message: {e}", exc_info=True)
+        
+        except asyncio.CancelledError:
+            self.logger.info("Message publisher shutting down")
+            raise
+
+
     async def subscribe(self, channels):
         """Subscribe to specified channels."""
         await self.pubsub.subscribe(*channels)
