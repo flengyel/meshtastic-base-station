@@ -52,9 +52,10 @@ class RedisHandler:
 
     async def message_publisher(self):
         """Process messages from queue and store in Redis."""
-        if self.data_handler is None: # Ensure data handler is set before starting
+        if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
-            raise ValueError("Meshtastic Data handler not set") 
+            raise ValueError("Meshtastic Data handler not set")
+        
         try:
             self.logger.info("Message publisher started")
             while True:
@@ -64,28 +65,12 @@ class RedisHandler:
                         msg_type = message["type"]
                         packet = message["packet"]
 
-                        # Process packet using MeshtasticDataHandler
+                        # Let data_handler process and store the packet
                         try:
-                            processed_packet = await self.data_handler.process_packet(
-                                message["packet"], message["type"]
-                            )
+                            await self.data_handler.process_packet(packet, msg_type)
                         except Exception as e:
-                            self.logger.error(f"Error processing {message['type']} packet: {e}")
+                            self.logger.error(f"Error processing {msg_type} packet: {e}")
                             continue
-
-                        # Store based on message type using async Redis calls
-                        if msg_type == "text":
-                            await self.store_message(json.dumps(processed_packet))
-                        elif msg_type == "node":
-                            await self.store_node(json.dumps(processed_packet))
-                        elif msg_type == "telemetry":
-                            telemetry = packet['decoded'].get('telemetry', {})
-                            if 'deviceMetrics' in telemetry:
-                                await self.store_device_telemetry(json.dumps(processed_packet))
-                            elif 'localStats' in telemetry:
-                                await self.store_network_telemetry(json.dumps(processed_packet))
-                            elif 'environmentMetrics' in telemetry:
-                                await self.store_environment_telemetry(json.dumps(processed_packet))
 
                         self.message_queue.task_done()
                     else:
@@ -121,9 +106,11 @@ class RedisHandler:
             raise
 
     async def load(self, key: str, start: int = 0, end: int = -1):
-        """Load data from Redis list."""
+        """Load data from Redis list with validation."""
         try:
-            return await self.client.lrange(key, start, end)
+            data = await self.client.lrange(key, start, end)
+            # Filter out None or empty strings
+            return [item for item in data if item]
         except Exception as e:
             self.logger.error(f"Failed to load data from {key}: {e}")
             return []
