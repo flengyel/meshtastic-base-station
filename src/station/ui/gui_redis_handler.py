@@ -35,13 +35,18 @@ class GuiRedisHandler(RedisHandler):
                         # Publish notification to the appropriate GUI channel
                         channel = self._get_channel_for_message(message["type"])
                         if channel:
+                            # Clean the packet for JSON serialization
+                            clean_packet = message["packet"].copy()
+                            if 'decoded' in clean_packet and 'payload' in clean_packet['decoded']:
+                                clean_packet['decoded']['payload'] = str(clean_packet['decoded']['payload'])
+            
                             await self.client.publish(channel, json.dumps({
-                                "type": message["type"],
-                                "packet" : message["packet"], # you forgot this line 
-                                "timestamp": datetime.now().isoformat()
-                            }))
+                                                        "type": message["type"],
+                                                        "packet": clean_packet,
+                                                        "timestamp": datetime.now().isoformat()
+                                                    }))                    
                     except Exception as e:
-                        self.logger.error(f"Error processing {message['type']} packet: {e}")
+                        self.logger.error(f"Error processing {message['type']} packet {message["packet"]}: {e}")
                 
                     self.message_queue.task_done()
                 else:
