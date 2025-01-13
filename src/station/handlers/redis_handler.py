@@ -15,8 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-# redis_handler.py
-
 import asyncio
 import redis.asyncio as aioredis
 import redis.exceptions
@@ -25,15 +23,13 @@ import json
 from src.station.utils.constants import RedisConst
 
 class RedisHandler:
-
     def __init__(self, host="localhost", port=6379, logger=None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
-        self.message_queue = asyncio.Queue()  # Add queue here
+        self.message_queue = asyncio.Queue()
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
-            self.pubsub = self.client.pubsub()
             self.logger.debug("Redis handler initialized")
         except Exception as e:
             self.logger.error(f"Failed to create Redis client: {e}", exc_info=True)
@@ -43,184 +39,109 @@ class RedisHandler:
         self.keys = {
             'messages': RedisConst.KEY_MESSAGES,
             'nodes': RedisConst.KEY_NODES,
-            'device_telemetry': RedisConst.KEY_TELEMETRY_DEVICE, 
-            'network_telemetry': RedisConst.KEY_TELEMETRY_NETWORK, 
+            'device_telemetry': RedisConst.KEY_TELEMETRY_DEVICE,
+            'network_telemetry': RedisConst.KEY_TELEMETRY_NETWORK,
             'environment_telemetry': RedisConst.KEY_TELEMETRY_ENVIRONMENT
-            }
-
-        self.logger.debug(f"Initialized Redis handler with keys: {self.keys}")
+        }
 
     async def message_publisher(self):
-        """Publishes messages from queue to Redis channels."""
+        """Process messages from queue and store in Redis."""
         try:
-            self.logger.info("Message publisher task started")
+            self.logger.info("Message publisher started")
             while True:
                 try:
-                    self.logger.debug(f"Queue size in publisher: {self.message_queue.qsize()}")  # Add this
                     if self.message_queue.qsize() > 0:
                         message = await self.message_queue.get()
-                        self.logger.debug(f"Got message from queue: {message['type']}")  # Add this
                         msg_type = message["type"]
+                        packet = message["packet"]
 
-                        # Choose channel based on message type
+                        # Store based on message type using async Redis calls
                         if msg_type == "text":
-                            channel = RedisConst.CHANNEL_TEXT
+                            await self.store_message(json.dumps(packet))
                         elif msg_type == "node":
-                            channel = RedisConst.CHANNEL_NODE
+                            await self.store_node(json.dumps(packet))
                         elif msg_type == "telemetry":
-                            # Determine telemetry type
-                            packet = message["packet"]
                             telemetry = packet['decoded'].get('telemetry', {})
                             if 'deviceMetrics' in telemetry:
-                                channel = RedisConst.CHANNEL_TELEMETRY_DEVICE
+                                await self.store_device_telemetry(json.dumps(packet))
                             elif 'localStats' in telemetry:
-                                channel = RedisConst.CHANNEL_TELEMETRY_NETWORK
+                                await self.store_network_telemetry(json.dumps(packet))
                             elif 'environmentMetrics' in telemetry:
-                                channel = RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
-                            else:
-                                self.logger.warning(f"Unknown telemetry type: {packet}")
-                                continue
-                            
-                        await self.publish(channel, message)
+                                await self.store_environment_telemetry(json.dumps(packet))
+
                         self.message_queue.task_done()
                     else:
                         await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-                    
+
                 except Exception as e:
-                    self.logger.error(f"Error publishing message: {e}", exc_info=True)
-        
+                    self.logger.error(f"Error processing message: {e}", exc_info=True)
+                    continue
+                    
         except asyncio.CancelledError:
             self.logger.info("Message publisher shutting down")
             raise
 
-
-    async def subscribe(self, channels):
-        """Subscribe to specified channels."""
-        await self.pubsub.subscribe(*channels)
-        self.logger.info(f"Subscribed to channels: {channels}")
-
-    async def listen(self):
-        """Listen for messages on subscribed channels."""
-        async for message in self.pubsub.listen():
-            if message["type"] == "message":
-                yield message
-
-    async def publish(self, channel, data):
-        """Publish data to a channel."""
-        await self.client.publish(channel, json.dumps(data))
-
-    async def close(self):
-        """Close Redis connection."""
-        await self.pubsub.close()
-        await self.client.close()
-
     async def verify_connection(self) -> bool:
-        """
-        Verify Redis connection is working.
-        Returns:
-            bool: True if connection successful, False otherwise
-        """
+        """Verify Redis connection is working."""
         try:
-            self.logger.debug("Testing Redis connection...")
             result = await self.client.ping()
             if result:
-                self.logger.info(f"Redis connection test successful")
-                # Check our keys exist
-                for key_name, key_path in self.keys.items():
-                    length = await self.client.llen(key_path)
-                    self.logger.debug(f"Key {key_path} has {length} entries")
+                self.logger.info("Redis connection verified")
                 return True
-            else:
-                self.logger.error("Redis connection test failed: ping returned False")
-                return False
-        except redis.exceptions.ConnectionError:
-            self.logger.error(f"Redis connection error connecting to {self.client.connection_pool.connection_kwargs['host']}:"
-                             f"{self.client.connection_pool.connection_kwargs['port']}")
             return False
         except Exception as e:
-            self.logger.error(f"Unexpected Redis error: {e}")
+            self.logger.error(f"Redis connection error: {e}")
             return False
 
     async def store(self, key: str, data: str):
-        """
-        Store raw data string in Redis list.
-        :param key: Redis key to store under
-        :param data: Raw data string (expected to be JSON)
-        """
+        """Store data in Redis list."""
         try:
-            self.logger.debug(f"Attempting to store {len(data)} bytes in key: {key}")
-            result = await self.client.lpush(key, data)
-            self.logger.debug(f"Redis lpush result: {result}")
-            self.logger.redis(f"Stored data in {key}")
-            
-            # Verify storage
-            length = await self.client.llen(key)
-            self.logger.debug(f"Current length of {key}: {length}")
-            
+            await self.client.lpush(key, data)
+            self.logger.debug(f"Stored data in {key}")
         except Exception as e:
-            self.logger.error(f"Failed to store data in {key}: {e}", exc_info=True)
+            self.logger.error(f"Failed to store data in {key}: {e}")
             raise
 
     async def load(self, key: str, start: int = 0, end: int = -1):
-        """
-        Load raw data from Redis list.
-        :param key: Redis key to load from
-        :param start: Start index
-        :param end: End index (-1 for all)
-        :return: List of raw data strings
-        """
+        """Load data from Redis list."""
         try:
-            data = await self.client.lrange(key, start, end)
-            self.logger.redis(f"Loaded {len(data)} items from {key}")
-            return data
+            return await self.client.lrange(key, start, end)
         except Exception as e:
             self.logger.error(f"Failed to load data from {key}: {e}")
             return []
 
+    # Storage methods for different types
     async def store_message(self, json_message: str):
-        """Store a raw JSON message."""
-        self.logger.debug(f"Storing message: {json_message[:200]}...")  # First 200 chars
         await self.store(self.keys['messages'], json_message)
 
     async def store_node(self, json_node: str):
-        """Store a raw JSON node update."""
-        self.logger.debug(f"Storing node: {json_node[:200]}...")  # First 200 chars
         await self.store(self.keys['nodes'], json_node)
 
-    async def load_messages(self, limit: int = -1):
-        """Load raw JSON messages."""
-        return await self.load(self.keys['messages'], 0, limit)
-
-    async def load_nodes(self, limit: int = -1):
-        """Load raw JSON node data."""
-        return await self.load(self.keys['nodes'], 0, limit)
-
     async def store_device_telemetry(self, json_telemetry: str):
-        """Store device telemetry data."""
-        self.logger.debug(f"Storing device telemetry: {json_telemetry[:200]}...")
         await self.store(self.keys['device_telemetry'], json_telemetry)
 
     async def store_network_telemetry(self, json_telemetry: str):
-        """Store network telemetry data."""
-        self.logger.debug(f"Storing network telemetry: {json_telemetry[:200]}...")
         await self.store(self.keys['network_telemetry'], json_telemetry)
 
+    async def store_environment_telemetry(self, json_telemetry: str):
+        await self.store(self.keys['environment_telemetry'], json_telemetry)
+
+    # Load methods for different types
+    async def load_messages(self, limit: int = -1):
+        return await self.load(self.keys['messages'], 0, limit)
+
+    async def load_nodes(self, limit: int = -1):
+        return await self.load(self.keys['nodes'], 0, limit)
+
     async def load_device_telemetry(self, limit: int = -1):
-        """Load device telemetry data."""
         return await self.load(self.keys['device_telemetry'], 0, limit)
 
     async def load_network_telemetry(self, limit: int = -1):
-        """Load network telemetry data."""
         return await self.load(self.keys['network_telemetry'], 0, limit)
 
-    async def store_environment_telemetry(self, json_telemetry: str):
-        """Store environment telemetry data."""
-        self.logger.debug(f"Storing environment telemetry: {json_telemetry[:200]}...")
-        await self.store(self.keys['environment_telemetry'], json_telemetry)
-
     async def load_environment_telemetry(self, limit: int = -1):
-        """Load environment telemetry data."""
         return await self.load(self.keys['environment_telemetry'], 0, limit)
 
-
-
+    async def close(self):
+        """Close Redis connection."""
+        await self.client.close()

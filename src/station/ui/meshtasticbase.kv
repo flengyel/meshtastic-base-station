@@ -1,29 +1,42 @@
+# meshtasticbase.kv
+
 <MessagesView>:
     orientation: 'vertical'
     Label:
         text: 'Messages'
+        size_hint_y: None
+        height: '40dp'
 
 <NodesView>:
     orientation: 'vertical'
     Label:
         text: 'Nodes'
+        size_hint_y: None
+        height: '40dp'
 
 <DeviceTelemetryView>:
     orientation: 'vertical'
     Label:
         text: 'Device Telemetry'
+        size_hint_y: None
+        height: '40dp'
 
 <NetworkTelemetryView>:
     orientation: 'vertical'
     Label:
         text: 'Network Telemetry'
+        size_hint_y: None
+        height: '40dp'
 
 <EnvironmentTelemetryView>:
     orientation: 'vertical'
     Label:
         text: 'Environment Telemetry'
+        size_hint_y: None
+        height: '40dp'
 
 <MeshtasticGui>:
+    orientation: 'vertical'
     TabbedPanel:
         do_default_tab: False
         

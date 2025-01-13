@@ -162,7 +162,6 @@ async def display_stored_data(data_handler):
         for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_NETWORK_TELEMETRY:]:  # Last 5 entries
             print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
 
-
 def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
     try:
@@ -176,7 +175,40 @@ def suggest_available_ports(logger: logging.Logger) -> None:
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-## Main function. There should be only one main function in the program. Not three.
+def create_callbacks(redis_handler, logger):
+    """Create message callbacks with Redis handler."""
+
+    def on_text_message(packet, interface):
+        logger.packet(f"on_text_message: {packet}")
+        try:
+            redis_handler.message_queue.put_nowait({
+                "type": "text",
+                "packet": packet
+            })
+        except Exception as e:
+            logger.error(f"Error in text message callback: {e}", exc_info=True)
+
+    def on_node_message(packet, interface):
+        logger.packet(f"on_node_message: {packet}")
+        try:
+            redis_handler.message_queue.put_nowait({
+                "type": "node",
+                "packet": packet
+            })
+        except Exception as e:
+            logger.error(f"Error in node message callback: {e}", exc_info=True)
+
+    def on_telemetry_message(packet, interface):
+        logger.packet(f"on_telemetry_message: {packet}")
+        try:
+            redis_handler.message_queue.put_nowait({
+                "type": "telemetry",
+                "packet": packet
+            })
+        except Exception as e:
+            logger.error(f"Error in telemetry callback: {e}", exc_info=True)
+
+    return on_text_message, on_node_message, on_telemetry_message
 
 async def main():
     """Main function to set up the Meshtastic listener."""
@@ -233,8 +265,6 @@ async def main():
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
     
-    
-
     if args.display_redis:
         logger.info("Displaying Redis data ...")
         await display_stored_data(data_handler)

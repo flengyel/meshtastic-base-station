@@ -5,9 +5,8 @@ import logging
 
 class MeshtasticHandler:
     """
-    Bridge between Meshtastic's sync callbacks and async Redis operations.
-    MeshtasticHandler only needs to know about the message queue and logger.
-    but nothing about the RedisHandler class.
+    Bridge between Meshtastic's sync callbacks and async processing.
+    Only responsible for queuing messages for async processing.
     """
 
     def __init__(self, message_queue: asyncio.Queue, logger=None):
@@ -15,6 +14,7 @@ class MeshtasticHandler:
         self.logger = logger or logging.getLogger(__name__)
 
     def on_text_message(self, packet, interface):
+        """Queue text message for async processing."""
         self.logger.packet(f"on_text_message: {packet}")
         try:
             self.message_queue.put_nowait({
@@ -22,10 +22,10 @@ class MeshtasticHandler:
                 "packet": packet
             })
         except Exception as e:
-            self.logger.error(f"Error in text message callback: {e}", exc_info=True)
+            self.logger.error(f"Error queueing text message: {e}", exc_info=True)
 
-    def on_node_message(self, packet: dict, interface: any) -> None:
-        """Callback for node messages."""
+    def on_node_message(self, packet, interface):
+        """Queue node message for async processing."""
         self.logger.packet(f"on_node_message: {packet}")
         try:
             self.message_queue.put_nowait({
@@ -33,10 +33,10 @@ class MeshtasticHandler:
                 "packet": packet
             })
         except Exception as e:
-            self.logger.error(f"Error in node message callback: {e}", exc_info=True)
+            self.logger.error(f"Error queueing node message: {e}", exc_info=True)
 
-    def on_telemetry_message(self, packet: dict, interface: any) -> None:
-        """Callback for telemetry messages."""
+    def on_telemetry_message(self, packet, interface):
+        """Queue telemetry message for async processing."""
         self.logger.packet(f"on_telemetry_message: {packet}")
         try:
             self.message_queue.put_nowait({
@@ -44,4 +44,4 @@ class MeshtasticHandler:
                 "packet": packet
             })
         except Exception as e:
-            self.logger.error(f"Error in telemetry callback: {e}", exc_info=True)        
+            self.logger.error(f"Error queueing telemetry message: {e}", exc_info=True)
