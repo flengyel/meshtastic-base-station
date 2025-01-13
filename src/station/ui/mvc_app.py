@@ -60,9 +60,12 @@ class MeshtasticBaseApp(App):
             self.logger.error(f"Error loading initial data: {e}")
 
     def build(self):
+        self.logger.debug("Starting build()")
         self.root = BoxLayout(orientation='vertical')
-        tabs = TabbedPanel(do_default_tab=False) 
-        self.logger.debug("Created TabbedPanel")  # Add this
+        self.logger.debug("Created root BoxLayout")
+    
+        tabs = TabbedPanel(do_default_tab=False)
+        self.logger.debug("Created TabbedPanel")
 
         self.views = {
             'messages': MessagesView(),
@@ -71,18 +74,20 @@ class MeshtasticBaseApp(App):
             'network_telemetry': NetworkTelemetryView(),
             'environment_telemetry': EnvironmentTelemetryView()
         }
-        self.logger.debug("Created views")  # Add this
+        self.logger.debug("Created views")
 
         for name, view in self.views.items():
             tab = TabbedPanelItem(text=name.replace('_', ' ').title())
+            self.logger.debug(f"Created tab for {name}")
             tab.add_widget(view)
+            self.logger.debug(f"Added view to tab for {name}")
             tabs.add_widget(tab)
-            self.logger.debug(f"Added {name} tab")  # Add this
+            self.logger.debug(f"Added tab to TabbedPanel for {name}")
 
         self.root.add_widget(tabs)
-        self.logger.debug("Added tabs to root")  # Add this
-        return self.root
-
+        self.logger.debug("Added TabbedPanel to root")
+        return self.root    
+    
     async def process_redis_messages(self):
         try:
             channels = [
@@ -146,15 +151,10 @@ class MeshtasticBaseApp(App):
 
             # Force build to happen first
             self.logger.debug("Building initial UI")
-            self.build()  # Add this line
+            self.build()
             self.logger.debug(f"Views available after build: {self.views.keys()}")
 
-            # Load initial data
-            await self.load_initial_data()
-
-            redis_task = asyncio.create_task(self.process_redis_messages())
-            self._tasks.append(redis_task)
-
+            # Run the app
             await self.app_func()
         except Exception as e:
             self.logger.error(f"Error starting GUI: {e}")
@@ -173,16 +173,18 @@ class MeshtasticBaseApp(App):
         """Main async function."""
         try:
             self._running = True
-            self.logger.debug("Starting app_func")  # Add this
+            self.logger.debug("Starting app_func")
+            # Run the Kivy app
+            self.logger.debug("Starting Kivy mainloop")
+            self.run()  # Add this line - it starts Kivy's main loop
             while self._running:
                 await asyncio.sleep(1/60)  # 60 FPS
                 Clock.tick()
         except Exception as e:
-            self.logger.error(f"Error in app_func: {e}", exc_info=True)
+            self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
         finally:
             await self.cleanup()
-
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
