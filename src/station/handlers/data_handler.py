@@ -410,36 +410,6 @@ class MeshtasticDataHandler:
         self.logger.debug(f"Successfully formatted {len(formatted)} messages")
         return formatted
 
-    async def format_environment_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
-        """Format environment telemetry for display."""
-        try:
-            data = json.loads(json_str)
-            metrics = data['environment_metrics']
-            return {
-                'timestamp': data['timestamp'],
-                'from_id': data['from_id'],
-                'temperature': f"{metrics['temperature']:.1f}°C",
-                'humidity': f"{metrics['relative_humidity']:.1f}%",
-                'pressure': f"{metrics['barometric_pressure']:.1f}hPa"
-            }
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error decoding environment telemetry JSON: {e}")
-            return None
-
-    async def get_formatted_environment_telemetry(self, limit: int = -1) -> list:
-        """Get formatted environment telemetry for display."""
-        self.logger.debug("Retrieving formatted environment telemetry")
-        telemetry = await self.redis.load_environment_telemetry(limit)
-        self.logger.debug(f"Found {len(telemetry)} environment telemetry records")
-    
-        formatted = []
-        for entry in telemetry:
-            fmt_entry = await self.format_environment_telemetry_for_display(entry)
-            if fmt_entry:
-                formatted.append(fmt_entry)
-    
-        return formatted
-
     async def format_device_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format device telemetry for display."""
         try:
@@ -503,19 +473,41 @@ class MeshtasticDataHandler:
     async def format_network_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format network telemetry for display."""
         try:
+            if not json_str:  # Check for None or empty string
+                self.logger.warning("Received empty network telemetry string")
+                return None
+            
             data = json.loads(json_str)
+            if not isinstance(data, dict):
+                self.logger.error(f"Network telemetry data is not a dictionary: {type(data)}")
+                return None
+            
+            # Check required fields
+            if 'local_stats' not in data:
+                self.logger.error("Missing local_stats in network telemetry data")
+                return None
+            
             stats = data['local_stats']
+            required_fields = ['num_online_nodes', 'num_total_nodes']
+            if not all(field in stats for field in required_fields):
+                self.logger.error(f"Missing required network stats fields: {required_fields}")
+                return None
+            
             return {
-                'timestamp': data['timestamp'],
-                'from_id': data['from_id'],
+                'timestamp': data.get('timestamp', 'unknown'),
+                'from_id': data.get('from_id', 'unknown'),
                 'online_nodes': str(stats['num_online_nodes']),
                 'total_nodes': str(stats['num_total_nodes']),
-                'packets_tx': str(stats['num_packets_tx']),
-                'packets_rx': str(stats['num_packets_rx']),
-                'packets_rx_bad': str(stats['num_packets_rx_bad'])
+                'packets_tx': str(stats.get('num_packets_tx', 0)),
+                'packets_rx': str(stats.get('num_packets_rx', 0)),
+                'packets_rx_bad': str(stats.get('num_packets_rx_bad', 0))
             }
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding network telemetry JSON: {e}")
+            self.logger.debug(f"Problematic JSON string: {json_str[:200]}...")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error formatting network telemetry: {str(e)}")
             return None
 
     async def get_formatted_network_telemetry(self, limit: int = -1) -> list:
@@ -523,12 +515,77 @@ class MeshtasticDataHandler:
         self.logger.debug("Retrieving formatted network telemetry")
         telemetry = await self.redis.load_network_telemetry(limit)
         self.logger.debug(f"Found {len(telemetry)} network telemetry records")
-        
+    
         formatted = []
         for entry in telemetry:
-            fmt_entry = await self.format_network_telemetry_for_display(entry)
-            if fmt_entry:
-                formatted.append(fmt_entry)
+            try:
+                fmt_entry = await self.format_network_telemetry_for_display(entry)
+                if fmt_entry:
+                    formatted.append(fmt_entry)
+                else:
+                    self.logger.warning("Skipping malformed network telemetry entry")
+            except Exception as e:
+                self.logger.error(f"Error processing network telemetry entry: {e}")
+                continue
+    
+        self.logger.debug(f"Successfully formatted {len(formatted)} network telemetry records")
         return formatted
 
+    async def format_environment_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
+        """Format environment telemetry for display."""
+        try:
+            if not json_str:  # Check for None or empty string
+                self.logger.warning("Received empty environment telemetry string")
+                return None
+            
+            data = json.loads(json_str)
+            if not isinstance(data, dict):
+                self.logger.error(f"Environment telemetry data is not a dictionary: {type(data)}")
+                return None
+            
+            # Check required fields
+            if 'environment_metrics' not in data:
+                self.logger.error("Missing environment_metrics in telemetry data")
+                return None
+            
+            metrics = data['environment_metrics']
+            required_fields = ['temperature', 'relative_humidity', 'barometric_pressure']
+            if not all(field in metrics for field in required_fields):
+                self.logger.error(f"Missing required environment metrics fields: {required_fields}")
+                return None
+            
+            return {
+                'timestamp': data.get('timestamp', 'unknown'),
+                'from_id': data.get('from_id', 'unknown'),
+                'temperature': f"{metrics['temperature']:.1f}°C",
+                'humidity': f"{metrics['relative_humidity']:.1f}%",
+                'pressure': f"{metrics['barometric_pressure']:.1f}hPa"
+            }
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding environment telemetry JSON: {e}")
+            self.logger.debug(f"Problematic JSON string: {json_str[:200]}...")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error formatting environment telemetry: {str(e)}")
+            return None
 
+    async def get_formatted_environment_telemetry(self, limit: int = -1) -> list:
+        """Get formatted environment telemetry for display."""
+        self.logger.debug("Retrieving formatted environment telemetry")
+        telemetry = await self.redis.load_environment_telemetry(limit)
+        self.logger.debug(f"Found {len(telemetry)} environment telemetry records")
+    
+        formatted = []
+        for entry in telemetry:
+            try:
+                fmt_entry = await self.format_environment_telemetry_for_display(entry)
+                if fmt_entry:
+                    formatted.append(fmt_entry)
+                else:
+                    self.logger.warning("Skipping malformed environment telemetry entry")
+            except Exception as e:
+                self.logger.error(f"Error processing environment telemetry entry: {e}")
+                continue
+    
+        self.logger.debug(f"Successfully formatted {len(formatted)} environment telemetry records")
+        return formatted
