@@ -30,7 +30,7 @@ class UserInfo(TypedDict):
     longName: str   # Long node name
     shortName: str  # Short node name
     macaddr: str     # MAC address
-    hw_model: str    # Hardware model
+    hwModel: str    # Hardware model
     raw: str        # Raw protobuf data
 
 class DeviceMetrics(TypedDict):

@@ -102,7 +102,7 @@ class MeshtasticHandler:
                     "longName": node_name,
                     "shortName": user.get("shortName", node_name),
                     "macaddr": user.get("macaddr", ""),
-                    "hw_model": user.get("hwModel", "unknown"),
+                    "hwModel": user.get("hwModel", "unknown"),
                     "raw": str(user)
                 },
                 "metrics": {

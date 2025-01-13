@@ -166,7 +166,7 @@ class MeshtasticDataHandler:
                     'longName': str(user_info['longName']),
                     'shortName': str(user_info['shortName']),
                     'macaddr': str(user_info['macaddr']),
-                    'hw_model': str(user_info['hwModel']),
+                    'hwModel': str(user_info['hwModel']),
                     'raw': str(user_info['raw'])
                 },
                 'metrics': self._extract_metrics(packet),
