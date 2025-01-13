@@ -230,7 +230,7 @@ async def main():
 
     try:
         interface = SerialInterface(args.device)
-        logger.debug(f"Connected to serial device: {args.device}")
+        logger.debug(f"Connected to serial device: {args.device}, {interface}")
 
         # Start Meshtastic handler to suibscribe to meshtastic events
         meshtastic_handler = MeshtasticHandler(message_queue=redis_handler.message_queue,
