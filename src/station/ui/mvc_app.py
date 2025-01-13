@@ -114,7 +114,9 @@ class MeshtasticBaseApp(App):
             
             msg_type = data["type"]
             packet = data["packet"]
-              
+
+            self.logger.debug(f"Updating UI with {msg_type} packet: {packet}")  # Add this
+
             if msg_type == "text":
                 self.views['messages'].update_messages([packet])
             elif msg_type == "node":
