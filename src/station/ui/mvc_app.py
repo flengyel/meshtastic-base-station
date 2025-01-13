@@ -71,7 +71,7 @@ class MeshtasticBaseApp(App):
             'environment_telemetry': EnvironmentTelemetryView()
         }
         
-        self.logger.debug(f"Immediately after defining self.views View keys: {self.views.keys()}")
+        self.logger.debug(f"Built views with keys: {self.views.keys()}")  # Add this
 
         for name, view in self.views.items():
             tab = TabbedPanelItem(text=name.replace('_', ' ').title())
@@ -166,11 +166,12 @@ class MeshtasticBaseApp(App):
         """Main async function."""
         try:
             self._running = True
+            self.logger.debug("Starting app_func")  # Add this
             while self._running:
                 await asyncio.sleep(1/60)  # 60 FPS
                 Clock.tick()
         except Exception as e:
-            self.logger.error(f"Error in app_func: {e}")
+            self.logger.error(f"Error in app_func: {e}", exc_info=True)
             raise
         finally:
             await self.cleanup()
