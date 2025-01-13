@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-import pubsub as pub
+from pubsub import pub
 from typing import Optional
 from meshtastic.serial_interface import SerialInterface
 from src.station.utils.constants import MeshtasticConst
@@ -17,9 +17,11 @@ class MeshtasticHandler:
     def __init__(self, message_queue: asyncio.Queue, interface: SerialInterface, logger: Optional[logging.Logger] = None):
         self.message_queue = message_queue
         self.logger = logger or logging.getLogger(__name__)
+        
         pub.subscribe(self.on_text_message, MeshtasticConst.TOPIC_RECEIVE_TEXT)
         pub.subscribe(self.on_node_message, MeshtasticConst.TOPIC_RECEIVE_USER)
         pub.subscribe(self.on_telemetry_message, MeshtasticConst.TOPIC_RECEIVE_TELEMETRY)
+        
         self.logger.debug("Meshtastic handler initialized")
 
     def on_text_message(self, packet, interface):
