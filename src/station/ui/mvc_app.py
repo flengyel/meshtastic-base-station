@@ -149,12 +149,8 @@ class MeshtasticBaseApp(App):
             self._running = True
             self.logger.info("Starting Meshtastic Base Station GUI")
 
-            # Force build to happen first
-            self.logger.debug("Building initial UI")
-            self.build()
-            self.logger.debug(f"Views available after build: {self.views.keys()}")
-
-            # Run the app
+            # We don't need to call build() here anymore as Kivy will do it
+            self.logger.debug("Starting Kivy application")
             await self.app_func()
         except Exception as e:
             self.logger.error(f"Error starting GUI: {e}")
@@ -174,12 +170,10 @@ class MeshtasticBaseApp(App):
         try:
             self._running = True
             self.logger.debug("Starting app_func")
-            # Run the Kivy app
+            # Load initial data before starting Kivy
+            await self.load_initial_data()
             self.logger.debug("Starting Kivy mainloop")
-            self.run()  # Add this line - it starts Kivy's main loop
-            while self._running:
-                await asyncio.sleep(1/60)  # 60 FPS
-                Clock.tick()
+            self.run()  # Kivy's mainloop
         except Exception as e:
             self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
