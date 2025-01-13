@@ -8,8 +8,8 @@ from kivy.lang import Builder
 
 import asyncio
 import json
-from typing import Optional
 import logging
+from datetime import datetime
 from src.station.utils.constants import RedisConst
 from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
@@ -255,18 +255,17 @@ class NodesView(BoxLayout):
             self.logger.debug(f"Updating nodes view with {len(nodes)} nodes")
             if nodes:
                 self.logger.debug(f"First node data: {nodes[0]}")
-                
+            
             self.container.clear_widgets()
             for node in nodes:
                 try:
-                    # Safe dictionary access with defaults
-                    timestamp = node.get('timestamp', 'unknown')
-                    from_id = node.get('from_id', 'unknown')
-                    name = node.get('user', {}).get('long_name', 'unknown')
-                    
-                    text = f"[{timestamp}] Node {from_id}: {name}"
+                    if 'decoded' in node:  # Raw packet
+                        user = node['decoded']['user']
+                        text = f"[{datetime.now().isoformat()}] Node {node['fromId']}: {user['longName']}"
+                    else:  # Formatted data
+                        text = f"[{node.get('timestamp', 'unknown')}] Node {node.get('id', 'unknown')}: {node.get('name', 'unknown')}"
+                
                     self.logger.debug(f"Creating label with text: {text}")
-                    
                     label = Label(
                         text=text,
                         size_hint_y=None,
@@ -279,7 +278,7 @@ class NodesView(BoxLayout):
                     self.logger.error(f"Error formatting node: {e}, node data: {node}")
                     continue
         except Exception as e:
-            self.logger.error(f"Error updating nodes view: {e}")
+            self.logger.error(f"Error updating nodes view: {e}") 
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
