@@ -62,6 +62,7 @@ class MeshtasticBaseApp(App):
     def build(self):
         self.root = BoxLayout(orientation='vertical')
         tabs = TabbedPanel()
+        self.logger.debug("Created TabbedPanel")  # Add this
 
         self.views = {
             'messages': MessagesView(),
@@ -70,15 +71,16 @@ class MeshtasticBaseApp(App):
             'network_telemetry': NetworkTelemetryView(),
             'environment_telemetry': EnvironmentTelemetryView()
         }
-        
-        self.logger.debug(f"Built views with keys: {self.views.keys()}")  # Add this
+        self.logger.debug("Created views")  # Add this
 
         for name, view in self.views.items():
             tab = TabbedPanelItem(text=name.replace('_', ' ').title())
             tab.add_widget(view)
             tabs.add_widget(tab)
+            self.logger.debug(f"Added {name} tab")  # Add this
 
         self.root.add_widget(tabs)
+        self.logger.debug("Added tabs to root")  # Add this
         return self.root
 
     async def process_redis_messages(self):
