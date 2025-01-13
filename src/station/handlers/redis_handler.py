@@ -22,12 +22,14 @@ from typing import Optional
 import logging
 import json
 from src.station.utils.constants import RedisConst
+from src.station.handlers.data_handler import DataHandler
 
 class RedisHandler:
     def __init__(self, host : str = RedisConst.DEFAULT_HOST, port: int = RedisConst.DEFAULT_PORT, logger: Optional[logging.Logger] = None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         self.message_queue = asyncio.Queue()
+        self.data_handler = None  # to be set by a method by delayed assignment
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
@@ -45,8 +47,14 @@ class RedisHandler:
             'environment_telemetry': RedisConst.KEY_TELEMETRY_ENVIRONMENT
         }
 
+    def set_data_handler(self, data_handler: DataHandler) -> None:
+        self.data_handler = data_handler
+
     async def message_publisher(self):
         """Process messages from queue and store in Redis."""
+        if self.data_handler is None:
+            self.logger.critical("Data handler not set")
+            raise ValueError("Data handler not set") 
         try:
             self.logger.info("Message publisher started")
             while True:
