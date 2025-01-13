@@ -61,7 +61,7 @@ class MeshtasticBaseApp(App):
 
     def build(self):
         self.root = BoxLayout(orientation='vertical')
-        tabs = TabbedPanel()
+        tabs = TabbedPanel(do_default_tab=False) 
         self.logger.debug("Created TabbedPanel")  # Add this
 
         self.views = {

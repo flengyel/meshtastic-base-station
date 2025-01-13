@@ -1,11 +1,10 @@
-# meshtasticbase.kv
-
 <MessagesView>:
     orientation: 'vertical'
     Label:
         text: 'Messages'
         size_hint_y: None
         height: '40dp'
+        bold: True
 
 <NodesView>:
     orientation: 'vertical'
@@ -13,6 +12,7 @@
         text: 'Nodes'
         size_hint_y: None
         height: '40dp'
+        bold: True
 
 <DeviceTelemetryView>:
     orientation: 'vertical'
@@ -20,6 +20,7 @@
         text: 'Device Telemetry'
         size_hint_y: None
         height: '40dp'
+        bold: True
 
 <NetworkTelemetryView>:
     orientation: 'vertical'
@@ -27,6 +28,7 @@
         text: 'Network Telemetry'
         size_hint_y: None
         height: '40dp'
+        bold: True
 
 <EnvironmentTelemetryView>:
     orientation: 'vertical'
@@ -34,28 +36,4 @@
         text: 'Environment Telemetry'
         size_hint_y: None
         height: '40dp'
-
-<MeshtasticGui>:
-    orientation: 'vertical'
-    TabbedPanel:
-        do_default_tab: False
-        
-        TabbedPanelItem:
-            text: 'Messages'
-            MessagesView:
-        
-        TabbedPanelItem:
-            text: 'Nodes'
-            NodesView:
-        
-        TabbedPanelItem:
-            text: 'Device Telemetry'
-            DeviceTelemetryView:
-        
-        TabbedPanelItem:
-            text: 'Network Telemetry'
-            NetworkTelemetryView:
-        
-        TabbedPanelItem:
-            text: 'Environment Telemetry'
-            EnvironmentTelemetryView:
+        bold: True
