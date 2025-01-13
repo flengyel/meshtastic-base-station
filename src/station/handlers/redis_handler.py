@@ -52,9 +52,9 @@ class RedisHandler:
 
     async def message_publisher(self):
         """Process messages from queue and store in Redis."""
-        if self.data_handler is None:
-            self.logger.critical("Data handler not set")
-            raise ValueError("Data handler not set") 
+        if self.data_handler is None: # Ensure data handler is set before starting
+            self.logger.critical("Meshtastic Data handler not set")
+            raise ValueError("Meshtastic Data handler not set") 
         try:
             self.logger.info("Message publisher started")
             while True:

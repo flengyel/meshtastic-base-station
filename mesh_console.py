@@ -221,6 +221,8 @@ async def main():
         return
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+    # Set data handler for redis_handler or it will raise an error
+    redis_handler.set_data_handler(data_handler) # Delayed assignment
 
     if args.display_redis:
         logger.info("Displaying Redis data ...")
@@ -232,7 +234,7 @@ async def main():
         interface = SerialInterface(args.device)
         logger.debug(f"Connected to serial device: {args.device}, {interface}")
 
-        # Start Meshtastic handler to suibscribe to meshtastic events
+        # Start Meshtastic handler to subscribe to meshtastic events
         meshtastic_handler = MeshtasticHandler(message_queue=redis_handler.message_queue,
                 interface=interface,
                 logger=logger
