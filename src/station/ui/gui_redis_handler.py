@@ -46,7 +46,7 @@ class GuiRedisHandler(RedisHandler):
                                                         "timestamp": datetime.now().isoformat()
                                                     }))                    
                     except Exception as e:
-                        self.logger.error(f"Error processing {message['type']} packet {message["packet"]}: {e}")
+                        self.logger.error(f"Error processing {message['type']} packet {message['packet']}: {e}")
                 
                     self.message_queue.task_done()
                 else:
