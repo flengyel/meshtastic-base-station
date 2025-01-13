@@ -115,8 +115,6 @@ class MeshtasticBaseApp(App):
             msg_type = data["type"]
             packet = data["packet"]
 
-            self.logger.debug(f"Updating UI with {msg_type} packet: {packet}")  # Add this
-
             if msg_type == "text":
                 self.views['messages'].update_messages([packet])
             elif msg_type == "node":
@@ -127,7 +125,7 @@ class MeshtasticBaseApp(App):
                     self.views[f'{telemetry_type}_telemetry'].update_telemetry(packet)
        
         except Exception as e:
-            self.logger.error(f"Error updating UI: {e}")
+            self.logger.error(f"Error updating UI with msg type {msg_type} packet {packet}: {e}")
 
     def _get_telemetry_type(self, packet):
         telemetry = packet['decoded']['telemetry']
