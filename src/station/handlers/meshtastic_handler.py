@@ -21,6 +21,7 @@ class MeshtasticHandler:
 
     def __init__(self, message_queue: asyncio.Queue, interface: SerialInterface, logger: Optional[logging.Logger] = None):
         self.message_queue = message_queue
+        self.interface = interface
         self.logger = logger or logging.getLogger(__name__)
         
         pub.subscribe(self.on_text_message, MeshtasticConst.TOPIC_RECEIVE_TEXT)
