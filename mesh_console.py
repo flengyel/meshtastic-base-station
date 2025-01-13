@@ -112,6 +112,19 @@ Examples:
         help="Start in GUI mode using Kivy interface"
     )
 
+    # Cleanup options
+    cleanup_group = parser.add_argument_group('Cleanup Options')
+    cleanup_group.add_argument(
+        "--cleanup-days",
+        type=int,
+        help="Remove data older than specified days"
+    )
+    cleanup_group.add_argument(
+        "--cleanup-corrupted",
+        action="store_true",
+        help="Remove corrupted data entries"
+    )
+
     args = parser.parse_args()
     args.log_levels = [level.strip() for level in args.log.split(",")]
     return args
@@ -224,6 +237,20 @@ async def main():
     # Set data handler for redis_handler or it will raise an error
     redis_handler.set_data_handler(data_handler) # Delayed assignment
 
+    # Handle cleanup if requested
+    if args.cleanup_days or args.cleanup_corrupted:
+        if args.cleanup_days:
+            logger.info(f"Cleaning up data older than {args.cleanup_days} days...")
+            await redis_handler.cleanup_data(args.cleanup_days)
+            
+        if args.cleanup_corrupted:
+            logger.info("Cleaning up corrupted data...")
+            await redis_handler.cleanup_corrupted_data()
+            
+        await redis_handler.close()
+        return
+    
+    # Display Redis data and exit
     if args.display_redis:
         logger.info("Displaying Redis data ...")
         await display_stored_data(data_handler)
