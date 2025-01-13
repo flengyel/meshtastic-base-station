@@ -32,6 +32,33 @@ class MeshtasticBaseApp(App):
         self._tasks = []
         self.views = {}
 
+    async def load_initial_data(self):
+        """Load and display stored data when GUI starts."""
+        try:
+            # Load and display nodes
+            nodes = await self.data_handler.get_formatted_nodes()
+            Clock.schedule_once(lambda dt: self.views['nodes'].update_nodes(nodes))
+
+            # Load and display messages
+            messages = await self.data_handler.get_formatted_messages()
+            Clock.schedule_once(lambda dt: self.views['messages'].update_messages(messages))
+
+            # Load and display device telemetry
+            device_telemetry = await self.data_handler.get_formatted_device_telemetry()
+            Clock.schedule_once(lambda dt: self.views['device_telemetry'].update_telemetry(device_telemetry))
+
+            # Load and display network telemetry
+            network_telemetry = await self.data_handler.get_formatted_network_telemetry()
+            Clock.schedule_once(lambda dt: self.views['network_telemetry'].update_telemetry(network_telemetry))
+
+            # Load and display environment telemetry
+            env_telemetry = await self.data_handler.get_formatted_environment_telemetry()
+            Clock.schedule_once(lambda dt: self.views['environment_telemetry'].update_telemetry(env_telemetry))
+
+            self.logger.info("Initial data loaded")
+        except Exception as e:
+            self.logger.error(f"Error loading initial data: {e}")
+
     def build(self):
         self.root = BoxLayout(orientation='vertical')
         tabs = TabbedPanel()
@@ -110,6 +137,9 @@ class MeshtasticBaseApp(App):
             self._running = True
             self.logger.info("Starting Meshtastic Base Station GUI")
 
+            # Add this line to load initial data
+            await self.load_initial_data()
+
             redis_task = asyncio.create_task(self.process_redis_messages())
             self._tasks.append(redis_task)
 
@@ -145,91 +175,203 @@ class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
-        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        
+        # Add a title label
+        self.title = Label(
+            text='Messages',
+            size_hint_y=None,
+            height='40dp',
+            bold=True
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(size_hint=(1, 1))
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='5dp',
+            padding='5dp'
+        )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
     def update_messages(self, messages):
+        """Update the messages display."""
         self.container.clear_widgets()
         for message in messages:
-            self.container.add_widget(
-                Label(text=f"[{message['timestamp']}] {message['from']} -> {message['to']}: {message['text']}", 
-                      size_hint_y=None, height=40)
+            text = f"[{message['timestamp']}] {message['from']} -> {message['to']}: {message['text']}"
+            label = Label(
+                text=text,
+                size_hint_y=None,
+                height='40dp',
+                text_size=(self.width * 0.9, None),
+                halign='left'
             )
+            self.container.add_widget(label)
 
 class NodesView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
-        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        
+        # Add a title label
+        self.title = Label(
+            text='Nodes',
+            size_hint_y=None,
+            height='40dp',
+            bold=True
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(size_hint=(1, 1))
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='5dp',
+            padding='5dp'
+        )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
     def update_nodes(self, nodes):
+        """Update the nodes display."""
         self.container.clear_widgets()
         for node in nodes:
-            self.container.add_widget(
-                Label(text=f"[{node['timestamp']}] Node {node['id']}: {node['name']}", 
-                      size_hint_y=None, height=40)
+            text = f"[{node['timestamp']}] Node {node['id']}: {node['name']}"
+            label = Label(
+                text=text,
+                size_hint_y=None,
+                height='40dp',
+                text_size=(self.width * 0.9, None),
+                halign='left'
             )
+            self.container.add_widget(label)
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
-        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        
+        # Add a title label
+        self.title = Label(
+            text='Device Telemetry',
+            size_hint_y=None,
+            height='40dp',
+            bold=True
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(size_hint=(1, 1))
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='5dp',
+            padding='5dp'
+        )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
-    def update_telemetry(self, packet):
-        metrics = packet['device_metrics']
+    def update_telemetry(self, telemetry_list):
+        """Update the device telemetry display."""
         self.container.clear_widgets()
-        self.container.add_widget(
-            Label(text=f"Battery: {metrics['battery_level']}%, Voltage: {metrics['voltage']}V",
-                  size_hint_y=None, height=40)
-        )
+        for entry in telemetry_list:
+            text = f"[{entry['timestamp']}] {entry['from_id']}: battery={entry['battery']}%, voltage={entry['voltage']}V"
+            label = Label(
+                text=text,
+                size_hint_y=None,
+                height='40dp',
+                text_size=(self.width * 0.9, None),
+                halign='left'
+            )
+            self.container.add_widget(label)
 
 class NetworkTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
-        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        
+        # Add a title label
+        self.title = Label(
+            text='Network Telemetry',
+            size_hint_y=None,
+            height='40dp',
+            bold=True
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(size_hint=(1, 1))
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='5dp',
+            padding='5dp'
+        )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
-    def update_telemetry(self, packet):
-        stats = packet['local_stats']
+    def update_telemetry(self, telemetry_list):
+        """Update the network telemetry display."""
         self.container.clear_widgets()
-        self.container.add_widget(
-            Label(text=f"Nodes: {stats['num_online_nodes']}/{stats['num_total_nodes']}, "
-                      f"Packets TX: {stats['num_packets_tx']}, RX: {stats['num_packets_rx']}",
-                  size_hint_y=None, height=40)
-        )
+        for entry in telemetry_list:
+            text = (f"[{entry['timestamp']}] {entry['from_id']}: "
+                   f"{entry['online_nodes']}/{entry['total_nodes']} nodes online, "
+                   f"TX: {entry['packets_tx']}, RX: {entry['packets_rx']}")
+            label = Label(
+                text=text,
+                size_hint_y=None,
+                height='40dp',
+                text_size=(self.width * 0.9, None),
+                halign='left'
+            )
+            self.container.add_widget(label)
 
 class EnvironmentTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        self.scroll = ScrollView(size_hint=(1, None), size=(self.width, self.height))
-        self.container = BoxLayout(orientation='vertical', size_hint_y=None)
+        
+        # Add a title label
+        self.title = Label(
+            text='Environment Telemetry',
+            size_hint_y=None,
+            height='40dp',
+            bold=True
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(size_hint=(1, 1))
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='5dp',
+            padding='5dp'
+        )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
-    def update_telemetry(self, packet):
-        metrics = packet['environment_metrics']
+    def update_telemetry(self, telemetry_list):
+        """Update the environment telemetry display."""
         self.container.clear_widgets()
-        self.container.add_widget(
-            Label(text=f"Temp: {metrics['temperature']}°C, "
-                      f"Humidity: {metrics['relative_humidity']}%, "
-                      f"Pressure: {metrics['barometric_pressure']}hPa",
-                  size_hint_y=None, height=40)
-        )
+        for entry in telemetry_list:
+            text = (f"[{entry['timestamp']}] {entry['from_id']}: "
+                   f"temp={entry['temperature']}, "
+                   f"humidity={entry['humidity']}, "
+                   f"pressure={entry['pressure']}")
+            label = Label(
+                text=text,
+                size_hint_y=None,
+                height='40dp',
+                text_size=(self.width * 0.9, None),
+                halign='left'
+            )
+            self.container.add_widget(label)

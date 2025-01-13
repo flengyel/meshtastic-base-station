@@ -267,6 +267,9 @@ async def main():
                 logger=logger
         )    
 
+        # Initialize connected node
+        meshtastic_handler.initialize_connected_node()
+
         # Start message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
         logger.debug(f"Created publisher task: {publisher_task}")
