@@ -175,47 +175,10 @@ def suggest_available_ports(logger: logging.Logger) -> None:
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-def create_callbacks(redis_handler, logger):
-    """Create message callbacks with Redis handler."""
-
-    def on_text_message(packet, interface):
-        logger.packet(f"on_text_message: {packet}")
-        try:
-            redis_handler.message_queue.put_nowait({
-                "type": "text",
-                "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in text message callback: {e}", exc_info=True)
-
-    def on_node_message(packet, interface):
-        logger.packet(f"on_node_message: {packet}")
-        try:
-            redis_handler.message_queue.put_nowait({
-                "type": "node",
-                "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in node message callback: {e}", exc_info=True)
-
-    def on_telemetry_message(packet, interface):
-        logger.packet(f"on_telemetry_message: {packet}")
-        try:
-            redis_handler.message_queue.put_nowait({
-                "type": "telemetry",
-                "packet": packet
-            })
-        except Exception as e:
-            logger.error(f"Error in telemetry callback: {e}", exc_info=True)
-
-    return on_text_message, on_node_message, on_telemetry_message
-
 async def main():
-    """Main function to set up the Meshtastic listener."""
     args = parse_arguments()
-    
-    # Set up logging (keep existing configuration)
-    logger = None 
+
+    # Configure logger
     logger = configure_logger(
         name=__name__,
         log_levels=args.log_levels,
@@ -224,22 +187,15 @@ async def main():
         debugging=args.debugging
     )
 
-    # Load config     
-    config = None
-    if args.config:
-        config = BaseStationConfig.load(path=args.config, logger=logger)
-    else:
-        config = BaseStationConfig.load(logger=logger)
-        logger.debug(f"Loaded default config from known locations")
-
-    # Override Redis settings if provided in arguments
+    # Load configuration
+    config = BaseStationConfig.load(path=args.config, logger=logger)
     if args.redis_host:
         config.redis.host = args.redis_host
     if args.redis_port:
         config.redis.port = args.redis_port
 
     # Initialize Redis handler
-    redis_handler = None # assume None for error handling
+    redis_handler = None
     try:
         if args.gui:
             from src.station.ui.gui_redis_handler import GuiRedisHandler
@@ -253,7 +209,8 @@ async def main():
                 host=config.redis.host,
                 port=config.redis.port,
                 logger=logger
-            )    
+            )
+
         if not await redis_handler.verify_connection():
             logger.error(f"Could not connect to Redis at {config.redis.host}:{config.redis.port}")
             return
@@ -264,22 +221,17 @@ async def main():
         return
 
     data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-    
+
     if args.display_redis:
         logger.info("Displaying Redis data ...")
         await display_stored_data(data_handler)
         await redis_handler.close()
         return
-  
+
     try:
         interface = SerialInterface(args.device)
         logger.debug(f"Connected to serial device: {args.device}")
 
-        meshtastic_handler = MeshtasticHandler(redis_handler.message_queue, logger)
-        interface.onTextMessage = meshtastic_handler.on_text_message
-        interface.onNodeMessage = meshtastic_handler.on_node_message
-        interface.onTelemetryMessage = meshtastic_handler.on_telemetry_message
-        
         # Start message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
         logger.debug(f"Created publisher task: {publisher_task}")
@@ -295,7 +247,6 @@ async def main():
         await redis_handler.close()
         return
 
-    # check if gui or console mode
     if args.gui:
         try:
             from src.station.ui.mvc_app import MeshtasticBaseApp
@@ -306,7 +257,8 @@ async def main():
                 config=config
             )
 
-          
+            # Ensure message publisher runs alongside GUI
+            app._tasks.append(publisher_task)
             await app.start()
         except ImportError:
             logger.error("GUI mode requires Kivy. Please install with: pip install kivy")
@@ -318,14 +270,11 @@ async def main():
             return
     else:
         # CLI mode
-      
-        # Display stored data
         await display_stored_data(data_handler)
         logger.info("Listening for messages... Type Ctrl+C to exit.")
 
         try:
-            while True:
-                await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
+            await publisher_task  # Run message publisher in CLI mode
         except KeyboardInterrupt:
             logger.info("Shutdown initiated...")
             publisher_task.cancel()

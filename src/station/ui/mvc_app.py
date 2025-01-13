@@ -5,23 +5,24 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.lang import Builder
+
 import asyncio
 import json
 from typing import Optional
 import logging
 from src.station.utils.constants import RedisConst
-from src.station.handlers.redis_handler import RedisHandler
+from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 
 # Load the Kivy UI definition
 Builder.load_file('src/station/ui/meshtasticbase.kv')
 
+
 class MeshtasticBaseApp(App):
-    def __init__(self, redis_handler: RedisHandler,
+    def __init__(self, redis_handler: GuiRedisHandler,
                  data_handler: MeshtasticDataHandler,
-                 logger: Optional[logging.Logger] = None,
-                 config: Optional[BaseStationConfig] = None):
+                 logger=None, config=None):
         super().__init__()
         self.redis_handler = redis_handler
         self.data_handler = data_handler
@@ -32,11 +33,9 @@ class MeshtasticBaseApp(App):
         self.views = {}
 
     def build(self):
-        """Build the UI with tabbed views."""
         self.root = BoxLayout(orientation='vertical')
         tabs = TabbedPanel()
 
-        # Initialize all views
         self.views = {
             'messages': MessagesView(),
             'nodes': NodesView(),
@@ -45,7 +44,6 @@ class MeshtasticBaseApp(App):
             'environment_telemetry': EnvironmentTelemetryView()
         }
 
-        # Create tabs for each view
         for name, view in self.views.items():
             tab = TabbedPanelItem(text=name.replace('_', ' ').title())
             tab.add_widget(view)
@@ -55,7 +53,6 @@ class MeshtasticBaseApp(App):
         return self.root
 
     async def process_redis_messages(self):
-        """Process messages from Redis pubsub."""
         try:
             channels = [
                 RedisConst.CHANNEL_TEXT,
@@ -65,15 +62,15 @@ class MeshtasticBaseApp(App):
                 RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
             ]
             await self.redis_handler.subscribe_gui(channels)
-            
+
             async for message in self.redis_handler.listen_gui():
                 if not self._running:
                     break
-                    
+
                 if message['type'] == 'message':
                     data = json.loads(message['data'])
                     Clock.schedule_once(lambda dt: self.update_ui(data))
-                    
+
         except asyncio.CancelledError:
             self.logger.info("Redis message processor shutting down")
             raise
@@ -82,7 +79,6 @@ class MeshtasticBaseApp(App):
             raise
 
     def update_ui(self, data):
-        """Update UI based on message type."""
         try:
             msg_type = data["type"]
             packet = data["packet"]
@@ -100,7 +96,6 @@ class MeshtasticBaseApp(App):
             self.logger.error(f"Error updating UI: {e}")
 
     def _get_telemetry_type(self, packet):
-        """Determine telemetry type from packet."""
         telemetry = packet['decoded']['telemetry']
         if 'deviceMetrics' in telemetry:
             return "device"
@@ -109,6 +104,28 @@ class MeshtasticBaseApp(App):
         elif 'environmentMetrics' in telemetry:
             return "environment"
         return None
+
+    async def start(self):
+        try:
+            self._running = True
+            self.logger.info("Starting Meshtastic Base Station GUI")
+
+            redis_task = asyncio.create_task(self.process_redis_messages())
+            self._tasks.append(redis_task)
+
+            await self.app_func()
+        except Exception as e:
+            self.logger.error(f"Error starting GUI: {e}")
+            raise
+        finally:
+            await self.cleanup()
+
+    async def cleanup(self):
+        self._running = False
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+        await self.redis_handler.cleanup()
 
     async def app_func(self):
         """Main async function."""
@@ -123,32 +140,6 @@ class MeshtasticBaseApp(App):
         finally:
             await self.cleanup()
 
-    async def start(self):
-        """Start the GUI application."""
-        try:
-            self._running = True
-            self.logger.info("Starting Meshtastic Base Station GUI")
-            
-            # Start Redis message processor
-            redis_task = asyncio.create_task(self.process_redis_messages())
-            self._tasks.append(redis_task)
-            
-            # Run the Kivy application
-            await self.app_func()
-            
-        except Exception as e:
-            self.logger.error(f"Error starting GUI: {e}")
-            raise
-        finally:
-            await self.cleanup()
-
-    async def cleanup(self):
-        """Clean up resources."""
-        self._running = False
-        for task in self._tasks:
-            if not task.done():
-                task.cancel()
-        await self.redis_handler.cleanup()
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):

@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import pubsub as pub
+
 
 class MeshtasticHandler:
     """
@@ -12,6 +14,9 @@ class MeshtasticHandler:
     def __init__(self, message_queue: asyncio.Queue, logger=None):
         self.message_queue = message_queue
         self.logger = logger or logging.getLogger(__name__)
+        pub.subscribe(self.on_text_message, "meshtastic_text_receive")
+        pub.subscribe(self.on_node_message, "meshtastic_node_receive")
+        pub.subscribe(self.on_telemetry_message, "meshtastic_telemetry_receive")
 
     def on_text_message(self, packet, interface):
         """Queue text message for async processing."""
@@ -45,3 +50,5 @@ class MeshtasticHandler:
             })
         except Exception as e:
             self.logger.error(f"Error queueing telemetry message: {e}", exc_info=True)
+    
+    
