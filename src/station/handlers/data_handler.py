@@ -303,13 +303,13 @@ class MeshtasticDataHandler:
     async def format_node_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON node string for display."""
         try:
-            self.logger.debug(f"Raw node data string: {json_str}")  # Add this line
+            # self.logger.debug(f"Raw node data string: {json_str}")  # Add this line
             if not json_str:  # Check for None or empty string
                 self.logger.warning("Received empty node string")
                 return None
             
             data = json.loads(json_str)
-            self.logger.debug(f"Parsed node data: {data}")  # And this line
+            # self.logger.debug(f"Parsed node data: {data}")  # And this line
             if not isinstance(data, dict):
                 self.logger.error(f"Node data is not a dictionary: {type(data)}")
                 return None
