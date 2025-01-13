@@ -37,6 +37,7 @@ class GuiRedisHandler(RedisHandler):
                         if channel:
                             await self.client.publish(channel, json.dumps({
                                 "type": message["type"],
+                                "packet" : message["packet"], # you forgot this line 
                                 "timestamp": datetime.now().isoformat()
                             }))
                     except Exception as e:
