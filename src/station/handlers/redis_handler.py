@@ -64,19 +64,28 @@ class RedisHandler:
                         msg_type = message["type"]
                         packet = message["packet"]
 
+                        # Process packet using MeshtasticDataHandler
+                        try:
+                            processed_packet = await self.data_handler.process_packet(
+                                message["packet"], message["type"]
+                            )
+                        except Exception as e:
+                            self.logger.error(f"Error processing {message['type']} packet: {e}")
+                            continue
+
                         # Store based on message type using async Redis calls
                         if msg_type == "text":
-                            await self.store_message(json.dumps(packet))
+                            await self.store_message(json.dumps(processed_packet))
                         elif msg_type == "node":
-                            await self.store_node(json.dumps(packet))
+                            await self.store_node(json.dumps(processed_packet))
                         elif msg_type == "telemetry":
                             telemetry = packet['decoded'].get('telemetry', {})
                             if 'deviceMetrics' in telemetry:
-                                await self.store_device_telemetry(json.dumps(packet))
+                                await self.store_device_telemetry(json.dumps(processed_packet))
                             elif 'localStats' in telemetry:
-                                await self.store_network_telemetry(json.dumps(packet))
+                                await self.store_network_telemetry(json.dumps(processed_packet))
                             elif 'environmentMetrics' in telemetry:
-                                await self.store_environment_telemetry(json.dumps(packet))
+                                await self.store_environment_telemetry(json.dumps(processed_packet))
 
                         self.message_queue.task_done()
                     else:
