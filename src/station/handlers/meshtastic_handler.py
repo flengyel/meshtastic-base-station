@@ -74,6 +74,7 @@ class MeshtasticHandler:
         try:
             # Get node info from interface
             node_info = self.interface.getMyNodeInfo()
+            self.logger.debug(f"Raw node info: {node_info}")  # Add this line
             if not node_info:
                 self.logger.error("Failed to get connected node info")
                 return
