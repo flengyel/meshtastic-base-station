@@ -330,7 +330,22 @@ class MeshtasticDataHandler:
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON message string for display."""
         try:
+            if not json_str:  # Check for None or empty string
+                self.logger.warning("Received empty message string")
+                return None
+            
             data = json.loads(json_str)
+            if not isinstance(data, dict):  # Verify we got a dictionary
+                self.logger.error(f"Message data is not a dictionary: {type(data)}")
+                return None
+            
+            # Check required fields exist
+            required_fields = ['timestamp', 'from_id', 'to_id', 'text']
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                self.logger.error(f"Message missing required fields: {missing_fields}")
+                return None
+            
             return {
                 'timestamp': data['timestamp'],
                 'from': data['from_id'],
@@ -339,6 +354,10 @@ class MeshtasticDataHandler:
             }
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding message JSON: {e}")
+            self.logger.debug(f"Problematic JSON string: {json_str[:200]}...")  # Log first 200 chars
+            return None
+        except Exception as e:
+            self.logger.error(f"Error formatting message: {str(e)}")
             return None
 
     async def get_formatted_messages(self, limit: int = -1) -> list:
@@ -346,13 +365,20 @@ class MeshtasticDataHandler:
         self.logger.debug("Retrieving formatted messages")
         messages = await self.redis.load_messages(limit)
         self.logger.debug(f"Found {len(messages)} messages")
-        
+    
         formatted = []
         for msg in messages:
-            fmt_msg = await self.format_message_for_display(msg)
-            if fmt_msg:
-                formatted.append(fmt_msg)
-        
+            try:
+                fmt_msg = await self.format_message_for_display(msg)
+                if fmt_msg:  # Only add successfully formatted messages
+                    formatted.append(fmt_msg)
+                else:
+                    self.logger.warning(f"Skipping malformed message")
+            except Exception as e:
+                self.logger.error(f"Error processing message: {e}")
+                continue
+    
+        self.logger.debug(f"Successfully formatted {len(formatted)} messages")
         return formatted
 
     async def format_environment_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
