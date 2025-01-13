@@ -22,7 +22,7 @@ from typing import Optional
 import logging
 import json
 from src.station.utils.constants import RedisConst
-from src.station.handlers.data_handler import DataHandler
+from src.station.handlers.data_handler import MeshtasticDataHandler
 
 class RedisHandler:
     def __init__(self, host : str = RedisConst.DEFAULT_HOST, port: int = RedisConst.DEFAULT_PORT, logger: Optional[logging.Logger] = None):
@@ -47,7 +47,7 @@ class RedisHandler:
             'environment_telemetry': RedisConst.KEY_TELEMETRY_ENVIRONMENT
         }
 
-    def set_data_handler(self, data_handler: DataHandler) -> None:
+    def set_data_handler(self, data_handler: MeshtasticDataHandler) -> None:
         self.data_handler = data_handler
 
     async def message_publisher(self):
