@@ -303,14 +303,36 @@ class MeshtasticDataHandler:
     async def format_node_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format a JSON node string for display."""
         try:
+            if not json_str:  # Check for None or empty string
+                self.logger.warning("Received empty node string")
+                return None
+            
             data = json.loads(json_str)
+            if not isinstance(data, dict):
+                self.logger.error(f"Node data is not a dictionary: {type(data)}")
+                return None
+            
+            # Check required fields
+            if 'user' not in data:
+                self.logger.error("Missing user data in node")
+                return None
+            
+            user = data['user']
+            if 'long_name' not in user:
+                self.logger.error("Missing long_name in user data")
+                return None
+            
             return {
-                'timestamp': data['timestamp'],
-                'id': data['from_id'],
-                'name': data['user']['long_name']
+                'timestamp': data.get('timestamp', 'unknown'),
+                'id': data.get('from_id', 'unknown'),
+                'name': user['long_name']
             }
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding node JSON: {e}")
+            self.logger.debug(f"Problematic JSON string: {json_str[:200]}...")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error formatting node: {str(e)}")
             return None
 
     async def get_formatted_nodes(self, limit: int = -1) -> list:
@@ -318,13 +340,20 @@ class MeshtasticDataHandler:
         self.logger.debug("Retrieving formatted nodes")
         nodes = await self.redis.load_nodes(limit)
         self.logger.debug(f"Found {len(nodes)} nodes")
-        
+    
         formatted = []
         for node in nodes:
-            fmt_node = await self.format_node_for_display(node)
-            if fmt_node:
-                formatted.append(fmt_node)
-        
+            try:
+                fmt_node = await self.format_node_for_display(node)
+                if fmt_node:
+                    formatted.append(fmt_node)
+                else:
+                    self.logger.warning("Skipping malformed node")
+            except Exception as e:
+                self.logger.error(f"Error processing node: {e}")
+                continue
+    
+        self.logger.debug(f"Successfully formatted {len(formatted)} nodes")
         return formatted
 
     async def format_message_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
@@ -414,18 +443,40 @@ class MeshtasticDataHandler:
     async def format_device_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:
         """Format device telemetry for display."""
         try:
+            if not json_str:  # Check for None or empty string
+                self.logger.warning("Received empty device telemetry string")
+                return None
+            
             data = json.loads(json_str)
+            if not isinstance(data, dict):
+                self.logger.error(f"Device telemetry data is not a dictionary: {type(data)}")
+                return None
+            
+            # Check required fields
+            if 'device_metrics' not in data:
+                self.logger.error("Missing device_metrics in telemetry data")
+                return None
+            
             metrics = data['device_metrics']
+            required_fields = ['battery_level', 'voltage']
+            if not all(field in metrics for field in required_fields):
+                self.logger.error(f"Missing required metrics fields: {required_fields}")
+                return None
+            
             return {
-                'timestamp': data['timestamp'],
-                'from_id': data['from_id'],
+                'timestamp': data.get('timestamp', 'unknown'),
+                'from_id': data.get('from_id', 'unknown'),
                 'battery': str(metrics['battery_level']),
                 'voltage': f"{metrics['voltage']:.2f}",
                 'channel_util': f"{metrics.get('channel_utilization', 0):.2f}",
-                'air_util': f"{metrics['air_util_tx']:.2f}"
+                'air_util': f"{metrics.get('air_util_tx', 0):.2f}"
             }
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding device telemetry JSON: {e}")
+            self.logger.debug(f"Problematic JSON string: {json_str[:200]}...")  # Log first 200 chars
+            return None
+        except Exception as e:
+            self.logger.error(f"Error formatting device telemetry: {str(e)}")
             return None
 
     async def get_formatted_device_telemetry(self, limit: int = -1) -> list:
@@ -433,12 +484,20 @@ class MeshtasticDataHandler:
         self.logger.debug("Retrieving formatted device telemetry")
         telemetry = await self.redis.load_device_telemetry(limit)
         self.logger.debug(f"Found {len(telemetry)} device telemetry records")
-        
+    
         formatted = []
         for entry in telemetry:
-            fmt_entry = await self.format_device_telemetry_for_display(entry)
-            if fmt_entry:
-                formatted.append(fmt_entry)
+            try:
+                fmt_entry = await self.format_device_telemetry_for_display(entry)
+                if fmt_entry:
+                    formatted.append(fmt_entry)
+                else:
+                    self.logger.warning("Skipping malformed device telemetry entry")
+            except Exception as e:
+                self.logger.error(f"Error processing device telemetry entry: {e}")
+                continue
+    
+        self.logger.debug(f"Successfully formatted {len(formatted)} device telemetry records")
         return formatted
 
     async def format_network_telemetry_for_display(self, json_str: str) -> Optional[Dict[str, str]]:

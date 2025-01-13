@@ -21,6 +21,7 @@ import redis.exceptions
 from typing import Optional
 import logging
 import json
+from datetime import datetime, timedelta
 from src.station.utils.constants import RedisConst
 from src.station.handlers.data_handler import MeshtasticDataHandler
 
@@ -150,3 +151,79 @@ class RedisHandler:
     async def close(self):
         """Close Redis connection."""
         await self.client.close()
+
+
+    async def cleanup_data(self, days: int = 30):
+        """Remove data older than specified days."""
+        try:
+            cutoff_time = datetime.now() - timedelta(days=days)
+            cutoff_str = cutoff_time.isoformat()
+        
+            for key in self.keys.values():
+                try:
+                    # Get all items
+                    items = await self.load(key)
+                    cleaned = []
+                    removed = 0
+                
+                    for item in items:
+                        try:
+                            data = json.loads(item)
+                            if data.get('timestamp', '') >= cutoff_str:
+                                cleaned.append(item)
+                            else:
+                                removed += 1
+                        except json.JSONDecodeError:
+                            self.logger.warning(f"Skipping malformed item in {key}")
+                            removed += 1
+                
+                    # Delete the key and add back cleaned items
+                    await self.client.delete(key)
+                    if cleaned:
+                        await self.client.rpush(key, *cleaned)
+                
+                    self.logger.info(f"Cleaned {key}: removed {removed} items, kept {len(cleaned)}")
+                
+                except Exception as e:
+                    self.logger.error(f"Error cleaning {key}: {e}")
+                    continue
+                
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+            raise
+
+    async def cleanup_corrupted_data(self):
+        """Remove any entries that can't be parsed as JSON."""
+        try:
+            for key in self.keys.values():
+                try:
+                    items = await self.load(key)
+                    valid_items = []
+                    removed = 0
+                
+                    for item in items:
+                        try:
+                            # Try to parse as JSON
+                            if item:  # Skip None or empty strings
+                                json.loads(item)
+                                valid_items.append(item)
+                            else:
+                                removed += 1
+                        except json.JSONDecodeError:
+                            removed += 1
+                            continue
+                
+                    # Replace with valid items
+                    await self.client.delete(key)
+                    if valid_items:
+                        await self.client.rpush(key, *valid_items)
+                    
+                    self.logger.info(f"Cleaned corrupted data from {key}: removed {removed} items, kept {len(valid_items)}")
+                
+                except Exception as e:
+                    self.logger.error(f"Error cleaning corrupted data from {key}: {e}")
+                    continue
+                
+        except Exception as e:
+            self.logger.error(f"Error during corrupted data cleanup: {e}")
+            raise    
