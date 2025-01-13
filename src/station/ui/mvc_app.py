@@ -214,6 +214,7 @@ class MessagesView(BoxLayout):
 class NodesView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
         # Add a title label
@@ -239,17 +240,35 @@ class NodesView(BoxLayout):
 
     def update_nodes(self, nodes):
         """Update the nodes display."""
-        self.container.clear_widgets()
-        for node in nodes:
-            text = f"[{node['timestamp']}] Node {node['id']}: {node['name']}"
-            label = Label(
-                text=text,
-                size_hint_y=None,
-                height='40dp',
-                text_size=(self.width * 0.9, None),
-                halign='left'
-            )
-            self.container.add_widget(label)
+        try:
+            self.logger.debug(f"Updating nodes view with {len(nodes)} nodes")
+            if nodes:
+                self.logger.debug(f"First node data: {nodes[0]}")
+                
+            self.container.clear_widgets()
+            for node in nodes:
+                try:
+                    # Safe dictionary access with defaults
+                    timestamp = node.get('timestamp', 'unknown')
+                    from_id = node.get('from_id', 'unknown')
+                    name = node.get('user', {}).get('long_name', 'unknown')
+                    
+                    text = f"[{timestamp}] Node {from_id}: {name}"
+                    self.logger.debug(f"Creating label with text: {text}")
+                    
+                    label = Label(
+                        text=text,
+                        size_hint_y=None,
+                        height='40dp',
+                        text_size=(self.width * 0.9, None),
+                        halign='left'
+                    )
+                    self.container.add_widget(label)
+                except Exception as e:
+                    self.logger.error(f"Error formatting node: {e}, node data: {node}")
+                    continue
+        except Exception as e:
+            self.logger.error(f"Error updating nodes view: {e}")
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
