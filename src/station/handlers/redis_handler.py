@@ -18,12 +18,13 @@
 import asyncio
 import redis.asyncio as aioredis
 import redis.exceptions
+from typing import Optional
 import logging
 import json
 from src.station.utils.constants import RedisConst
 
 class RedisHandler:
-    def __init__(self, host="localhost", port=6379, logger=None):
+    def __init__(self, host : str = RedisConst.DEFAULT_HOST, port: int = RedisConst.DEFAULT_PORT, logger: Optional[logging.Logger] = None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         self.message_queue = asyncio.Queue()

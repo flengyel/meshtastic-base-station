@@ -232,6 +232,12 @@ async def main():
         interface = SerialInterface(args.device)
         logger.debug(f"Connected to serial device: {args.device}")
 
+        # Start Meshtastic handler to suibscribe to meshtastic events
+        meshtastic_handler = MeshtasticHandler(message_queue=redis_handler.message_queue,
+                interface=interface,
+                logger=logger
+        )    
+
         # Start message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
         logger.debug(f"Created publisher task: {publisher_task}")
@@ -279,6 +285,7 @@ async def main():
             logger.info("Shutdown initiated...")
             publisher_task.cancel()
         finally:
+            meshtastic_handler.cleanup()
             interface.close()
             await redis_handler.close()
             logger.info("Interface closed.")

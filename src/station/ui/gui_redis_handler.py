@@ -1,9 +1,11 @@
 import asyncio
+import logging
+from typing import Optional
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.utils.constants import RedisConst
 
 class GuiRedisHandler(RedisHandler):
-    def __init__(self, host="localhost", port=6379, logger=None):
+    def __init__(self, host: str = RedisConst.DEFAULT_HOST, port : int = RedisConst.DEFAULT_PORT, logger: Optional[logging.Logger] = None):
         super().__init__(host, port, logger)
         self.pubsub = self.client.pubsub()
         self.logger.debug("GUI Redis handler initialized")

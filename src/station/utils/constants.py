@@ -46,6 +46,13 @@ class RedisConst:
     CHANNEL_TELEMETRY_ENVIRONMENT = "meshtastic.telemetry.environment"
     CHANNEL_PROCESSED = "meshtastic.processed"  # For GUI updates
 
+# Meshtaastic Handler Configuration
+class MeshtasticConst:
+    """Meshtastic-related constants."""
+    TOPIC_RECEIVE_TEXT = "meshtastic.receive.text" # Text message
+    TOPIC_RECEIVE_USER = "meshtastic.receive.user" # Node message
+    TOPIC_RECEIVE_TELEMETRY = "meshtastic.receive.telemetry" # Telemetry message
+
 # Device Configuration
 class DeviceConst:
     """Device-related constants."""
