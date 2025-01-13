@@ -109,7 +109,8 @@ class MeshtasticBaseApp(App):
 
     def update_ui(self, data):
         try:
-            self.logger.debug(f"Before start of update_ui() View keys: {self.views.keys()}")
+            # Debugging
+            self.logger.debug(f"View keys available for update: {self.views.keys()}")
             
             msg_type = data["type"]
             packet = data["packet"]
@@ -123,8 +124,6 @@ class MeshtasticBaseApp(App):
                 if telemetry_type:
                     self.views[f'{telemetry_type}_telemetry'].update_telemetry(packet)
        
-            self.logger.debug(f"End of update_ui() View keys: {self.views.keys()}")
-
         except Exception as e:
             self.logger.error(f"Error updating UI: {e}")
 

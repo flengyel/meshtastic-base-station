@@ -163,8 +163,8 @@ class MeshtasticDataHandler:
                 'from_id': str(packet['fromId']),
                 'user': {
                     'id': str(user_info['id']),
-                    'long_name': str(user_info['longName']),
-                    'short_name': str(user_info['shortName']),
+                    'longName': str(user_info['longName']),
+                    'shortName': str(user_info['shortName']),
                     'macaddr': str(user_info['macaddr']),
                     'hw_model': str(user_info['hwModel']),
                     'raw': str(user_info['raw'])

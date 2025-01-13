@@ -27,8 +27,8 @@ class Metrics(TypedDict):
 class UserInfo(TypedDict):
     """User information from a node."""
     id: str          # Node ID in !hexnum format
-    long_name: str   # Long node name
-    short_name: str  # Short node name
+    longName: str   # Long node name
+    shortName: str  # Short node name
     macaddr: str     # MAC address
     hw_model: str    # Hardware model
     raw: str        # Raw protobuf data
