@@ -142,7 +142,12 @@ class MeshtasticBaseApp(App):
             self._running = True
             self.logger.info("Starting Meshtastic Base Station GUI")
 
-            # Add this line to load initial data
+            # Force build to happen first
+            self.logger.debug("Building initial UI")
+            self.build()  # Add this line
+            self.logger.debug(f"Views available after build: {self.views.keys()}")
+
+            # Load initial data
             await self.load_initial_data()
 
             redis_task = asyncio.create_task(self.process_redis_messages())
