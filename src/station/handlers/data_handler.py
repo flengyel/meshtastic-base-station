@@ -70,7 +70,7 @@ class MeshtasticDataHandler:
         await self.redis.store_node(json.dumps(processed))
         self.logger.data(f"Stored node info for {processed['from_id']}")
         self.logger.info(
-            f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['long_name']}"
+            f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['longName']}"
         )
 
     async def _handle_text(self, packet: Dict[str, Any]) -> None:
@@ -318,14 +318,14 @@ class MeshtasticDataHandler:
                 return None
             
             user = data['user']
-            if 'long_name' not in user:
-                self.logger.error("Missing long_name in user data")
+            if 'longName' not in user:
+                self.logger.error("Missing longName in user data")
                 return None
             
             return {
                 'timestamp': data.get('timestamp', 'unknown'),
                 'id': data.get('from_id', 'unknown'),
-                'name': user['long_name']
+                'name': user['longName']
             }
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding node JSON: {e}")
