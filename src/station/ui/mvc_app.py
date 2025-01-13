@@ -70,6 +70,8 @@ class MeshtasticBaseApp(App):
             'network_telemetry': NetworkTelemetryView(),
             'environment_telemetry': EnvironmentTelemetryView()
         }
+        
+        self.logger.debug(f"Immediately after defining self.views View keys: {self.views.keys()}")
 
         for name, view in self.views.items():
             tab = TabbedPanelItem(text=name.replace('_', ' ').title())
@@ -107,9 +109,11 @@ class MeshtasticBaseApp(App):
 
     def update_ui(self, data):
         try:
+            self.logger.debug(f"Before start of update_ui() View keys: {self.views.keys()}")
+            
             msg_type = data["type"]
             packet = data["packet"]
-
+              
             if msg_type == "text":
                 self.views['messages'].update_messages([packet])
             elif msg_type == "node":
@@ -118,6 +122,8 @@ class MeshtasticBaseApp(App):
                 telemetry_type = self._get_telemetry_type(packet)
                 if telemetry_type:
                     self.views[f'{telemetry_type}_telemetry'].update_telemetry(packet)
+       
+            self.logger.debug(f"End of update_ui() View keys: {self.views.keys()}")
 
         except Exception as e:
             self.logger.error(f"Error updating UI: {e}")
