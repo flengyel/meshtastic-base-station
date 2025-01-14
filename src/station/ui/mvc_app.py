@@ -185,9 +185,18 @@ class MeshtasticBaseApp(App):
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
+        # Pop our custom config before calling super().__init__
+        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
+        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
+        # strict property requirements.
+        
+        self.config = kwargs.pop('config', None)  
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        
+
+        # Use configured monospace font if config is provided
+        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+
         # Add a title label
         self.title = Label(
             text='Messages',
@@ -219,18 +228,25 @@ class MessagesView(BoxLayout):
                 size_hint_y=None,
                 height='40dp',
                 text_size=(self.width * 0.9, None),
-                halign='left'
+                halign='left',
+                font_name=self.monospace_font
             )
             self.container.add_widget(label)
 
 class NodesView(BoxLayout):
     def __init__(self,  config: Optional[BaseStationConfig] = None, **kwargs):
+        # Pop our custom config before calling super().__init__
+        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
+        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
+        # strict property requirements.
+        
+        self.config = kwargs.pop('config', None)
         super().__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
         # Use configured monospace font if config is provided
-        self.monospace_font = config.ui_cfg.monospace_font if config else None        
+        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
         
         # Add a title label
         self.title = Label(
@@ -289,9 +305,18 @@ class NodesView(BoxLayout):
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
+        # Pop our custom config before calling super().__init__
+        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
+        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
+        # strict property requirements.
+        
+        self.config = kwargs.pop('config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        
+
+        # Use configured monospace font if config is provided
+        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+
         # Add a title label
         self.title = Label(
             text='Device Telemetry',
@@ -323,15 +348,25 @@ class DeviceTelemetryView(BoxLayout):
                 size_hint_y=None,
                 height='40dp',
                 text_size=(self.width * 0.9, None),
-                halign='left'
+                halign='left',
+                font_name=self.monospace_font
             )
             self.container.add_widget(label)
 
 class NetworkTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
+        # Pop our custom config before calling super().__init__
+        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
+        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
+        # strict property requirements.
+        
+        self.config = kwargs.pop('config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        
+
+        # Use configured monospace font if config is provided
+        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+
         # Add a title label
         self.title = Label(
             text='Network Telemetry',
@@ -365,15 +400,25 @@ class NetworkTelemetryView(BoxLayout):
                 size_hint_y=None,
                 height='40dp',
                 text_size=(self.width * 0.9, None),
-                halign='left'
+                halign='left',
+                font_name=self.monospace_font
             )
             self.container.add_widget(label)
 
 class EnvironmentTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
+        # Pop our custom config before calling super().__init__
+        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
+        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
+        # strict property requirements.
+        
+        self.config = kwargs.pop('config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-        
+
+        # Use configured monospace font if config is provided
+        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+
         # Add a title label
         self.title = Label(
             text='Environment Telemetry',
@@ -408,6 +453,7 @@ class EnvironmentTelemetryView(BoxLayout):
                 size_hint_y=None,
                 height='40dp',
                 text_size=(self.width * 0.9, None),
-                halign='left'
+                halign='left',
+                font_name=self.monospace_font
             )
             self.container.add_widget(label)
