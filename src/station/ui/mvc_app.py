@@ -5,6 +5,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.lang import Builder
+from kivy.core.text import LabelBase
 
 import asyncio
 import json
@@ -221,7 +222,6 @@ class MessagesView(BoxLayout):
             )
             self.container.add_widget(label)
 
-from kivy.core.text import LabelBase
 
 class NodesView(BoxLayout):
     def __init__(self, **kwargs):
@@ -230,7 +230,7 @@ class NodesView(BoxLayout):
         self.orientation = 'vertical'
         
         # Find available monospace font
-        available_fonts = LabelBase.get_available_fonts()
+        available_fonts = LabelBase.get_system_fonts()
         self.logger.debug(f"Available fonts: {available_fonts}")
         self.monospace_font = None
         for font in ['RobotoMono', 'DejaVuSansMono', 'Courier']:
@@ -239,7 +239,33 @@ class NodesView(BoxLayout):
                 self.logger.debug(f"Using monospace font: {font}")
                 break
         
-        # Rest of __init__ remains the same...
+        # Add a title label
+        self.title = Label(
+            text='Nodes',
+            size_hint_y=None,
+            height='40dp',
+            bold=True,
+            halign='left'  # Left-align the title
+        )
+        self.add_widget(self.title)
+        
+        # Create scrollview with container
+        self.scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,  # Vertical scroll only
+            do_scroll_y=True,
+            bar_width='10dp',
+            scroll_type=['bars']
+        )
+        self.container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing='2dp',
+            padding='5dp'
+        )
+        self.container.bind(minimum_height=self.container.setter('height'))
+        self.scroll.add_widget(self.container)
+        self.add_widget(self.scroll)
 
     def update_nodes(self, nodes):
         """Update the nodes display."""
@@ -271,7 +297,7 @@ class NodesView(BoxLayout):
                     continue
         except Exception as e:
             self.logger.error(f"Error updating nodes view: {e}")
-            
+
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
