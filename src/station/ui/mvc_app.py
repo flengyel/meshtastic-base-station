@@ -221,39 +221,25 @@ class MessagesView(BoxLayout):
             )
             self.container.add_widget(label)
 
+from kivy.core.text import LabelBase
+
 class NodesView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
-        # Add a title label
-        self.title = Label(
-            text='Nodes',
-            size_hint_y=None,
-            height='40dp',
-            bold=True,
-            halign='left'  # Left-align the title
-        )
-        self.add_widget(self.title)
+        # Find available monospace font
+        available_fonts = LabelBase.get_available_fonts()
+        self.logger.debug(f"Available fonts: {available_fonts}")
+        self.monospace_font = None
+        for font in ['RobotoMono', 'DejaVuSansMono', 'Courier']:
+            if font in available_fonts:
+                self.monospace_font = font
+                self.logger.debug(f"Using monospace font: {font}")
+                break
         
-        # Create scrollview with container
-        self.scroll = ScrollView(
-            size_hint=(1, 1),
-            do_scroll_x=False,  # Vertical scroll only
-            do_scroll_y=True,
-            bar_width='10dp',
-            scroll_type=['bars']
-        )
-        self.container = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            spacing='2dp',
-            padding='5dp'
-        )
-        self.container.bind(minimum_height=self.container.setter('height'))
-        self.scroll.add_widget(self.container)
-        self.add_widget(self.scroll)
+        # Rest of __init__ remains the same...
 
     def update_nodes(self, nodes):
         """Update the nodes display."""
@@ -265,22 +251,27 @@ class NodesView(BoxLayout):
                     text = (f"[{node.get('timestamp', 'unknown'):25}] "
                            f"{node.get('id', 'unknown'):10} "
                            f"{node.get('name', 'unknown')}")
-                    label = Label(
-                        text=text,
-                        size_hint_y=None,
-                        height='25dp',
-                        text_size=(self.width - 20, None),  # Full width minus padding
-                        halign='left',
-                        valign='middle',
-                        font_name='RobotoMono'  # Monospace font for alignment
-                    )
+                    
+                    label_kwargs = {
+                        'text': text,
+                        'size_hint_y': None,
+                        'height': '25dp',
+                        'text_size': (self.width - 20, None),
+                        'halign': 'left',
+                        'valign': 'middle'
+                    }
+                    
+                    if self.monospace_font:
+                        label_kwargs['font_name'] = self.monospace_font
+                    
+                    label = Label(**label_kwargs)
                     self.container.add_widget(label)
                 except Exception as e:
                     self.logger.error(f"Error formatting node: {e}")
                     continue
         except Exception as e:
             self.logger.error(f"Error updating nodes view: {e}")
-
+            
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
