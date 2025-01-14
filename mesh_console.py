@@ -215,7 +215,8 @@ async def main():
             redis_handler = GuiRedisHandler(
                 host=config.redis.host,
                 port=config.redis.port,
-                logger=logger
+                logger=logger,
+                config=config
             )
         else:
             redis_handler = RedisHandler(

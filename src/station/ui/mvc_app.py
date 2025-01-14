@@ -25,7 +25,8 @@ from src.station.config.base_config import BaseStationConfig
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
                  data_handler: MeshtasticDataHandler,
-                 logger=None, config=None):
+                 logger=None, 
+                 config : BaseStationConfig = None):
         super().__init__()
         self.redis_handler = redis_handler
         self.data_handler = data_handler

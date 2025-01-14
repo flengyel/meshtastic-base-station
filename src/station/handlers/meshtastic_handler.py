@@ -18,7 +18,7 @@ class MeshtasticHandler:
     """
     Bridge between Meshtastic's sync callbacks and async processing.
     Only responsible for queuing messages for async processing.
-    The interface isn't used directly, but is required for Meshtastic's callbacks.
+    The SerialInterface.interface isn't used directly, but is required for Meshtastic's callbacks.
     """
 
     def __init__(self, 
