@@ -16,7 +16,8 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 
 # Load the Kivy UI definition
-Builder.load_file('src/station/ui/meshtasticbase.kv')
+# we're doing this too many times
+# Builder.load_file('src/station/ui/meshtasticbase.kv')
 
 
 class MeshtasticBaseApp(App):
@@ -279,7 +280,7 @@ class NodesView(BoxLayout):
                     continue
         except Exception as e:
             self.logger.error(f"Error updating nodes view: {e}")
-            
+
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
