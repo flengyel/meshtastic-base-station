@@ -229,15 +229,8 @@ class NodesView(BoxLayout):
         self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
-        # Find available monospace font
-        available_fonts = LabelBase.get_system_fonts()
-        self.logger.debug(f"Available fonts: {available_fonts}")
-        self.monospace_font = None
-        for font in ['RobotoMono', 'DejaVuSansMono', 'Courier']:
-            if font in available_fonts:
-                self.monospace_font = font
-                self.logger.debug(f"Using monospace font: {font}")
-                break
+        # Use system monospace font
+        self.monospace_font = 'monospace'  # Most systems have this alias
         
         # Add a title label
         self.title = Label(
@@ -278,19 +271,15 @@ class NodesView(BoxLayout):
                            f"{node.get('id', 'unknown'):10} "
                            f"{node.get('name', 'unknown')}")
                     
-                    label_kwargs = {
-                        'text': text,
-                        'size_hint_y': None,
-                        'height': '25dp',
-                        'text_size': (self.width - 20, None),
-                        'halign': 'left',
-                        'valign': 'middle'
-                    }
-                    
-                    if self.monospace_font:
-                        label_kwargs['font_name'] = self.monospace_font
-                    
-                    label = Label(**label_kwargs)
+                    label = Label(
+                        text=text,
+                        size_hint_y=None,
+                        height='25dp',
+                        text_size=(self.width - 20, None),  # Full width minus padding
+                        halign='left',
+                        valign='middle',
+                        font_name=self.monospace_font
+                    )
                     self.container.add_widget(label)
                 except Exception as e:
                     self.logger.error(f"Error formatting node: {e}")
