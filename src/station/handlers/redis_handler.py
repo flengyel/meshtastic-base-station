@@ -26,7 +26,10 @@ from src.station.utils.constants import RedisConst
 from src.station.handlers.data_handler import MeshtasticDataHandler
 
 class RedisHandler:
-    def __init__(self, host : str = RedisConst.DEFAULT_HOST, port: int = RedisConst.DEFAULT_PORT, logger: Optional[logging.Logger] = None):
+    def __init__(self, 
+                 host : str = RedisConst.DEFAULT_HOST, 
+                 port: int = RedisConst.DEFAULT_PORT, 
+                 logger: Optional[logging.Logger] = None):
         """Initialize Redis connection and logger."""
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         self.message_queue = asyncio.Queue()

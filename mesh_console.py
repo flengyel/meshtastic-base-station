@@ -262,13 +262,13 @@ async def main():
         logger.debug(f"Connected to serial device: {args.device}, {interface}")
 
         # Start Meshtastic handler to subscribe to meshtastic events
-        meshtastic_handler = MeshtasticHandler(message_queue=redis_handler.message_queue,
+        meshtastic_handler = MeshtasticHandler(redis_handler=redis_handler,
                 interface=interface,
                 logger=logger
         )    
 
         # Initialize connected node
-        meshtastic_handler.initialize_connected_node()
+        await meshtastic_handler.initialize_connected_node()
 
         # Start message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())

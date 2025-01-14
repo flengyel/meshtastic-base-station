@@ -6,11 +6,13 @@ from pubsub import pub
 from typing import Optional
 import time
 from datetime import datetime
+import json
 
 from meshtastic.serial_interface import SerialInterface
 from src.station.types.meshtastic_types import NodeInfo
 from src.station.utils.validation import validate_typed_dict
 from src.station.utils.constants import MeshtasticConst
+from src.station.handlers.redis_handler import RedisHandler
 
 class MeshtasticHandler:
     """
@@ -19,8 +21,12 @@ class MeshtasticHandler:
     The interface isn't used directly, but is required for Meshtastic's callbacks.
     """
 
-    def __init__(self, message_queue: asyncio.Queue, interface: SerialInterface, logger: Optional[logging.Logger] = None):
-        self.message_queue = message_queue
+    def __init__(self, 
+                 redis_handler : RedisHandler, 
+                 interface: SerialInterface, 
+                 logger: Optional[logging.Logger] = None):
+        self.redis_handler = redis_handler
+        self.message_queue = redis_handler.message_queue
         self.interface = interface
         self.logger = logger or logging.getLogger(__name__)
         
@@ -69,12 +75,12 @@ class MeshtasticHandler:
         pub.unsubscribe(self.on_node_message, MeshtasticConst.TOPIC_RECEIVE_USER)
         pub.unsubscribe(self.on_telemetry_message, MeshtasticConst.TOPIC_RECEIVE_TELEMETRY)
 
-    def initialize_connected_node(self) -> None:
+    async def initialize_connected_node(self) -> None:
         """Initialize connected node information."""
         try:
             # Get node info from interface
             node_info = self.interface.getMyNodeInfo()
-            self.logger.debug(f"Raw node info: {node_info}")  # Add this line
+            self.logger.debug(f"Raw node info: {node_info}")
             if not node_info:
                 self.logger.error("Failed to get connected node info")
                 return
@@ -87,35 +93,20 @@ class MeshtasticHandler:
             # Format node ID in Meshtastic format (!hex)
             node_id = f"!{node_num:08x}"
             
-            # Get user info
+            # Check if our node already exists
+            existing_nodes = await self.redis_handler.load_nodes()
+            for node in existing_nodes:
+                try:
+                    node_data = json.loads(node)
+                    if node_data.get('from_id') == node_id:
+                        self.logger.info(f"Connected node already exists: {node_id}")
+                        return
+                except json.JSONDecodeError:
+                    continue  # Skip malformed entries
+            
+            # Get user info and create packet only if node doesn't exist
             user = node_info.get("user", {})
             node_name = user.get("longName") or user.get("shortName") or node_id
-
-            # Create NodeInfo structure
-            connected_node = {
-                "type": "nodeinfo",
-                "timestamp": datetime.now().isoformat(),
-                "from_num": node_num,
-                "from_id": node_id,
-                "user": {
-                    "id": node_id,
-                    "longName": node_name,
-                    "shortName": user.get("shortName", node_name),
-                    "macaddr": user.get("macaddr", ""),
-                    "hwModel": user.get("hwModel", "unknown"),
-                    "raw": str(user)
-                },
-                "metrics": {
-                    "rx_time": int(time.time()),
-                    "rx_snr": None,
-                    "rx_rssi": None,
-                    "hop_limit": 3
-                },
-                "raw": str(node_info)
-            }
-
-            # Validate the node info structure
-            validate_typed_dict(connected_node, NodeInfo)
 
             # Create packet for processing
             packet = {
@@ -123,19 +114,26 @@ class MeshtasticHandler:
                 'fromId': node_id,
                 'decoded': {
                     'portnum': 'NODEINFO_APP',
-                    'user': connected_node['user']  # Use our validated user info
+                    'user': {
+                        'id': node_id,
+                        'longName': node_name,
+                        'shortName': user.get("shortName", node_name),
+                        'macaddr': user.get("macaddr", ""),
+                        'hwModel': user.get("hwModel", "unknown"),
+                        'raw': str(user)
+                    }
                 },
-                'rxTime': connected_node['metrics']['rx_time'],
-                'hopLimit': connected_node['metrics']['hop_limit'],
-                'raw': connected_node['raw']
+                'rxTime': int(time.time()),
+                'hopLimit': 3,
+                'raw': str(node_info)
             }
 
-            # Queue the node info for processing
+            # Queue the node info
             self.message_queue.put_nowait({
                 "type": "node",
                 "packet": packet
             })
-            
+        
             self.logger.info(f"Initialized connected node: {node_id} ({node_name})")
 
         except Exception as e:
