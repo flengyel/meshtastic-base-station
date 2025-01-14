@@ -73,30 +73,31 @@ class MeshtasticDataHandler:
             f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['longName']}"
         )
 
-    async def _handle_nodeinfo(self, packet: Dict[str, Any]) -> None:
-        """Handle NODEINFO_APP packets."""
-        processed = self._process_nodeinfo(packet)
-    
-        # Check if we already have this node with the same info
-        existing_nodes = await self.get_formatted_nodes()
-        node_changed = True
-    
-        for existing in existing_nodes:
-            if existing['id'] == processed['from_id']:
-                # Node exists, check if anything meaningful changed
-                # (ignoring timestamp)
-                if (existing.get('name') == processed['user']['longName']):
-                    node_changed = False
-                    break
-    
-        if node_changed:
-            await self.redis.store_node(json.dumps(processed))
-            self.logger.data(f"Stored node info for {processed['from_id']}")
-            self.logger.info(
-                f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['longName']}"
-            )
-        else:
-            self.logger.debug(f"Skipping unchanged node {processed['from_id']}")
+##    Version with node change detection
+##    async def _handle_nodeinfo(self, packet: Dict[str, Any]) -> None:
+##        """Handle NODEINFO_APP packets."""
+##        processed = self._process_nodeinfo(packet)
+##    
+##        # Check if we already have this node with the same info
+##        existing_nodes = await self.get_formatted_nodes()
+##        node_changed = True
+##    
+##        for existing in existing_nodes:
+##            if existing['id'] == processed['from_id']:
+##                # Node exists, check if anything meaningful changed
+##                # (ignoring timestamp)
+##                if (existing.get('name') == processed['user']['longName']):
+##                    node_changed = False
+##                    break
+##    
+##        if node_changed:
+##            await self.redis.store_node(json.dumps(processed))
+##            self.logger.data(f"Stored node info for {processed['from_id']}")
+##            self.logger.info(
+##                f"[{processed['timestamp']}] Node {processed['from_id']}: {processed['user']['longName']}"
+##            )
+##        else:
+##            self.logger.debug(f"Skipping unchanged node {processed['from_id']}")
 
     async def _handle_text(self, packet: Dict[str, Any]) -> None:
         """Handle TEXT_MESSAGE_APP packets."""
