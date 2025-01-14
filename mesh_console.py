@@ -200,7 +200,7 @@ async def main():
         debugging=args.debugging
     )
 
-    # Load configuration
+    # Load configuration into BaseStationConfig instance
     config = BaseStationConfig.load(path=args.config, logger=logger)
     if args.redis_host:
         config.redis.host = args.redis_host
@@ -215,8 +215,7 @@ async def main():
             redis_handler = GuiRedisHandler(
                 host=config.redis.host,
                 port=config.redis.port,
-                logger=logger,
-                config=config
+                logger=logger
             )
         else:
             redis_handler = RedisHandler(
@@ -293,7 +292,7 @@ async def main():
                 redis_handler=redis_handler,
                 data_handler=data_handler,
                 logger=logger,
-                config=config
+                config=config  # Pass BaseStationConfig instance to GUI
             )
 
             # Ensure message publisher runs alongside GUI
