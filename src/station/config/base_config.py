@@ -63,11 +63,18 @@ class LoggingConfig:
     debugging: bool = LoggingConst.DEFAULT_DEBUGGING
 
 @dataclass
+class UIConfig:
+    """GUI configuration."""
+    monospace_font: str = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
+    monospace_bold: str = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf'
+
+@dataclass
 class BaseStationConfig:
     """Main configuration class for the Meshtastic base station."""
     redis: RedisConfig = field(default_factory=RedisConfig)
     device: DeviceConfig = field(default_factory=DeviceConfig)
     log_cfg: LoggingConfig = field(default_factory=LoggingConfig)
+    ui_cfg: UIConfig = field(default_factory=UIConfig) 
     data_retention_days: int = BaseStationConst.DEFAULT_DATA_RETENTION_DAYS
     environment: str = BaseStationConst.DEFAULT_ENVIRONMENT
 

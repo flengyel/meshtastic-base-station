@@ -11,6 +11,8 @@ import asyncio
 import json
 import logging
 from datetime import datetime
+from typing import Optional
+from src.station.config.base_config import BaseStationConfig
 from src.station.utils.constants import RedisConst
 from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
@@ -19,7 +21,6 @@ from src.station.config.base_config import BaseStationConfig
 # Load the Kivy UI definition
 # we're doing this too many times
 # Builder.load_file('src/station/ui/meshtasticbase.kv')
-
 
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
@@ -70,12 +71,12 @@ class MeshtasticBaseApp(App):
         self.logger.debug("Created TabbedPanel")
 
         self.views = {
-            'messages': MessagesView(),
-            'nodes': NodesView(),
-            'device_telemetry': DeviceTelemetryView(),
-            'network_telemetry': NetworkTelemetryView(),
-            'environment_telemetry': EnvironmentTelemetryView()
-        }
+        'messages': MessagesView(config=self.config),
+        'nodes': NodesView(config=self.config),
+        'device_telemetry': DeviceTelemetryView(config=self.config),
+        'network_telemetry': NetworkTelemetryView(config=self.config),
+        'environment_telemetry': EnvironmentTelemetryView(config=self.config)
+        }        
         self.logger.debug("Created views")
 
         for name, view in self.views.items():
@@ -222,15 +223,14 @@ class MessagesView(BoxLayout):
             )
             self.container.add_widget(label)
 
-
 class NodesView(BoxLayout):
-    def __init__(self, **kwargs):
+    def __init__(self,  config: Optional[BaseStationConfig] = None, **kwargs):
         super().__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
-        # Use system monospace font
-        self.monospace_font = 'monospace'  # Most systems have this alias
+        # Use configured monospace font if config is provided
+        self.monospace_font = config.ui_cfg.monospace_font if config else None        
         
         # Add a title label
         self.title = Label(

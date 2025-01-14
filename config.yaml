@@ -27,3 +27,8 @@ log_cfg:
   use_threshold: false
   debugging: false
   format: "%(asctime)s %(levelname)s:%(name)s:%(message)s"
+
+# UI configuration
+ui_cfg:
+  monospace_font: /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+  monospace_bold: /usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
