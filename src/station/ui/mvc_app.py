@@ -231,17 +231,22 @@ class NodesView(BoxLayout):
             text='Nodes',
             size_hint_y=None,
             height='40dp',
-            bold=True
+            bold=True,
+            halign='center'  # Center the title
         )
         self.add_widget(self.title)
         
         # Create scrollview with container
-        self.scroll = ScrollView(size_hint=(1, 1))
+        self.scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,  # Only vertical scrolling
+            bar_width='10dp'    # Make scrollbar visible
+        )
         self.container = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            spacing='5dp',
-            padding='5dp'
+            spacing='2dp',      # Space between items
+            padding='10dp'      # Padding around all items
         )
         self.container.bind(minimum_height=self.container.setter('height'))
         self.scroll.add_widget(self.container)
@@ -253,30 +258,27 @@ class NodesView(BoxLayout):
             self.logger.debug(f"Updating nodes view with {len(nodes)} nodes")
             if nodes:
                 self.logger.debug(f"First node data: {nodes[0]}")
-            
+                
             self.container.clear_widgets()
             for node in nodes:
                 try:
-                    if 'decoded' in node:  # Raw packet
-                        user = node['decoded']['user']
-                        text = f"[{datetime.now().isoformat()}] Node {node['fromId']}: {user['longName']}"
-                    else:  # Formatted data
-                        text = f"[{node.get('timestamp', 'unknown')}] Node {node.get('id', 'unknown')}: {node.get('name', 'unknown')}"
-                
-                    self.logger.debug(f"Creating label with text: {text}")
+                    text = f"[{node.get('timestamp', 'unknown')}] Node {node.get('id', 'unknown')}: {node.get('name', 'unknown')}"
                     label = Label(
                         text=text,
                         size_hint_y=None,
-                        height='40dp',
+                        height='30dp',
                         text_size=(self.width * 0.9, None),
-                        halign='left'
+                        halign='left',
+                        valign='middle',  # Center text vertically
+                        shorten=True,     # Enable text shortening if too long
+                        shorten_from='right'
                     )
                     self.container.add_widget(label)
                 except Exception as e:
                     self.logger.error(f"Error formatting node: {e}, node data: {node}")
                     continue
         except Exception as e:
-            self.logger.error(f"Error updating nodes view: {e}") 
+            self.logger.error(f"Error updating nodes view: {e}")
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
