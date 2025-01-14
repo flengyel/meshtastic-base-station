@@ -89,10 +89,12 @@ class BaseStationConfig:
         redis_config = RedisConfig(**config_dict.get('redis', {}))
         device_config = DeviceConfig(**config_dict.get('device', {}))
         logging_config = LoggingConfig(**config_dict.get('logging', {}))
+        ui_config = UIConfig(**config_dict.get('ui_cfg', {}))
         return cls(
             redis=redis_config,
             device=device_config,
             log_cfg=logging_config,
+            ui_cfg=ui_config, 
             data_retention_days=config_dict.get('data_retention_days', BaseStationConst.DEFAULT_DATA_RETENTION_DAYS),
             environment=config_dict.get('environment', BaseStationConst.DEFAULT_ENVIRONMENT)
         )
