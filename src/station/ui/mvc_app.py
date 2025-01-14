@@ -26,12 +26,12 @@ class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
                  data_handler: MeshtasticDataHandler,
                  logger=None, 
-                 config : BaseStationConfig = None):
+                 station_config : BaseStationConfig = None):
         super().__init__()
         self.redis_handler = redis_handler
         self.data_handler = data_handler
         self.logger = logger or logging.getLogger(__name__)
-        self.config = config
+        self.station_config = station_config # avoid shadowing the built-in 'config' attribute
         self._running = False
         self._tasks = []
         self.views = {}
@@ -72,11 +72,11 @@ class MeshtasticBaseApp(App):
         self.logger.debug("Created TabbedPanel")
 
         self.views = {
-        'messages': MessagesView(config=self.config),
-        'nodes': NodesView(config=self.config),
-        'device_telemetry': DeviceTelemetryView(config=self.config),
-        'network_telemetry': NetworkTelemetryView(config=self.config),
-        'environment_telemetry': EnvironmentTelemetryView(config=self.config)
+        'messages': MessagesView(station_config=self.station_config),
+        'nodes': NodesView(station_config=self.station_config),
+        'device_telemetry': DeviceTelemetryView(station_config=self.station_config),
+        'network_telemetry': NetworkTelemetryView(station_config=self.station_config),
+        'environment_telemetry': EnvironmentTelemetryView(station_config=self.station_config)
         }        
         self.logger.debug("Created views")
 
@@ -186,17 +186,17 @@ class MeshtasticBaseApp(App):
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
-        # Pop our custom config before calling super().__init__
+        # Pop our custom station_config before calling super().__init__
         # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
         # (like MessagesView, etc) because they inherit from Kivy widgets which have 
         # strict property requirements.
         
-        self.config = kwargs.pop('config', None)  
+        self.station_config = kwargs.pop('station_config', None)  
         super().__init__(**kwargs)
         self.orientation = 'vertical'
 
         # Use configured monospace font if config is provided
-        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
 
         # Add a title label
         self.title = Label(
@@ -236,18 +236,18 @@ class MessagesView(BoxLayout):
 
 class NodesView(BoxLayout):
     def __init__(self,  config: Optional[BaseStationConfig] = None, **kwargs):
-        # Pop our custom config before calling super().__init__
+        # Pop our custom station_config before calling super().__init__
         # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
         # (like MessagesView, etc) because they inherit from Kivy widgets which have 
         # strict property requirements.
         
-        self.config = kwargs.pop('config', None)
+        self.station_config = kwargs.pop('station_config', None)
         super().__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self.orientation = 'vertical'
         
         # Use configured monospace font if config is provided
-        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
         
         # Add a title label
         self.title = Label(
@@ -306,17 +306,17 @@ class NodesView(BoxLayout):
 
 class DeviceTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
-        # Pop our custom config before calling super().__init__
+        # Pop our custom station_config before calling super().__init__
         # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
         # (like MessagesView, etc) because they inherit from Kivy widgets which have 
         # strict property requirements.
         
-        self.config = kwargs.pop('config', None)
+        self.station_config = kwargs.pop('station_config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
 
         # Use configured monospace font if config is provided
-        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
 
         # Add a title label
         self.title = Label(
@@ -356,17 +356,17 @@ class DeviceTelemetryView(BoxLayout):
 
 class NetworkTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
-        # Pop our custom config before calling super().__init__
+        # Pop our custom station_config before calling super().__init__
         # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
         # (like MessagesView, etc) because they inherit from Kivy widgets which have 
         # strict property requirements.
         
-        self.config = kwargs.pop('config', None)
+        self.station_config = kwargs.pop('station_config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
 
         # Use configured monospace font if config is provided
-        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
 
         # Add a title label
         self.title = Label(
@@ -408,17 +408,17 @@ class NetworkTelemetryView(BoxLayout):
 
 class EnvironmentTelemetryView(BoxLayout):
     def __init__(self, **kwargs):
-        # Pop our custom config before calling super().__init__
+        # Pop our custom station_config before calling super().__init__
         # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
         # (like MessagesView, etc) because they inherit from Kivy widgets which have 
         # strict property requirements.
         
-        self.config = kwargs.pop('config', None)
+        self.station_config = kwargs.pop('station_config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
 
         # Use configured monospace font if config is provided
-        self.monospace_font = self.config.ui_cfg.monospace_font if self.config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
 
         # Add a title label
         self.title = Label(

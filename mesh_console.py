@@ -201,11 +201,11 @@ async def main():
     )
 
     # Load configuration into BaseStationConfig instance
-    config = BaseStationConfig.load(path=args.config, logger=logger)
+    station_config = BaseStationConfig.load(path=args.config, logger=logger)
     if args.redis_host:
-        config.redis.host = args.redis_host
+        station_config.redis.host = args.redis_host
     if args.redis_port:
-        config.redis.port = args.redis_port
+        station_config.redis.port = args.redis_port
 
     # Initialize Redis handler
     redis_handler = None
@@ -213,19 +213,19 @@ async def main():
         if args.gui:
             from src.station.ui.gui_redis_handler import GuiRedisHandler
             redis_handler = GuiRedisHandler(
-                host=config.redis.host,
-                port=config.redis.port,
+                host=station_config.redis.host,
+                port=station_config.redis.port,
                 logger=logger
             )
         else:
             redis_handler = RedisHandler(
-                host=config.redis.host,
-                port=config.redis.port,
+                host=station_config.redis.host,
+                port=station_config.redis.port,
                 logger=logger
             )
 
         if not await redis_handler.verify_connection():
-            logger.error(f"Could not connect to Redis at {config.redis.host}:{config.redis.port}")
+            logger.error(f"Could not connect to Redis at {station_config.redis.host}:{station_config.redis.port}")
             return
     except Exception as e:
         logger.error(f"Unexpected error initializing Redis: {e}")
@@ -292,7 +292,7 @@ async def main():
                 redis_handler=redis_handler,
                 data_handler=data_handler,
                 logger=logger,
-                config=config  # Pass BaseStationConfig instance to GUI
+                station_config=station_config  # Pass BaseStationConfig instance to GUI
             )
 
             # Ensure message publisher runs alongside GUI
