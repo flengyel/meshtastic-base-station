@@ -64,22 +64,19 @@ class RedisHandler:
             self.logger.info("Message publisher started")
             while True:
                 try:
-                    if self.message_queue.qsize() > 0:
-                        message = await self.message_queue.get()
-                        msg_type = message["type"]
-                        packet = message["packet"]
+                    message = await self.message_queue.get()
+                    msg_type = message["type"]
+                    packet = message["packet"]
 
-                        # Let data_handler process and store the packet
-                        try:
-                            await self.data_handler.process_packet(packet, msg_type)
-                        except Exception as e:
-                            self.logger.error(f"Error processing {msg_type} packet: {e}")
-                            continue
-
+                    # Let data_handler process and store the packet
+                    try:
+                        await self.data_handler.process_packet(packet, msg_type)
+                    except Exception as e:
+                        self.logger.error(f"Error processing {msg_type} packet: {e}")
+                        continue
+                    finally:
                         self.message_queue.task_done()
-                    else:
-                        await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-
+             
                 except Exception as e:
                     self.logger.error(f"Error processing message: {e}", exc_info=True)
                     continue
