@@ -7,26 +7,25 @@ from src.station.handlers.redis_handler import RedisHandler
 from src.station.utils.constants import RedisConst
 
 class GuiRedisHandler(RedisHandler):
-    
     def __init__(self, 
                  host: str = RedisConst.DEFAULT_HOST, 
                  port: int = RedisConst.DEFAULT_PORT, 
                  logger: Optional[logging.Logger] = None):
         super().__init__(host, port, logger)
         self.pubsub = self.client.pubsub()
-        self._tasks = [] # Store tasks for cleanup
+        self._tasks = []  # Store tasks for cleanup
         self.logger.debug("GUI Redis handler initialized")
 
     async def message_publisher(self):
-        """Process messages, store in Redis, and publish GUI updates."""
+        """Process messages and publish GUI updates."""
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-    
+        
         try:
             self.logger.info("GUI message publisher started")
             heartbeat_task = asyncio.create_task(self.heartbeat())
-            self._tasks.append(heartbeat_task)  # Track the task for cleanup
+            self._tasks.append(heartbeat_task)
             
             while self._running:
                 try:
@@ -38,7 +37,7 @@ class GuiRedisHandler(RedisHandler):
                         )
                         clean_packet = self._create_serializable_packet(message["packet"])
                         channel = self._get_channel_for_message(message["type"])
-                    
+                        
                         if channel:
                             self.logger.debug(f"Publishing to channel: {channel}")
                             await self.client.publish(channel, json.dumps({
@@ -51,7 +50,7 @@ class GuiRedisHandler(RedisHandler):
                         self.logger.error(f"Error processing message: {e}", exc_info=True)
                     finally:
                         self.message_queue.task_done()
-                    
+                        
                 except Exception as e:
                     self.logger.error(f"Error in message loop: {e}", exc_info=True)
                     continue
@@ -66,6 +65,29 @@ class GuiRedisHandler(RedisHandler):
                 pass
             raise
 
+    def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
+        """Get the appropriate Redis channel for a message type."""
+        channel_map = {
+            "text": RedisConst.CHANNEL_TEXT,
+            "node": RedisConst.CHANNEL_NODE,
+            "telemetry": RedisConst.CHANNEL_TELEMETRY_DEVICE,
+        }
+        channel = channel_map.get(msg_type)
+        self.logger.debug(f"Channel for message type {msg_type}: {channel}")
+        return channel
+        
+    async def cleanup(self):
+        """Clean up Redis connections."""
+        try:
+            self.logger.debug("Starting GUI cleanup")
+            self._running = False
+            await self.pubsub.unsubscribe()
+            self.logger.debug("Unsubscribed from pubsub")
+            await self.pubsub.close()
+            self.logger.debug("Closed pubsub")
+            await super().close()
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
 
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""
@@ -141,17 +163,6 @@ class GuiRedisHandler(RedisHandler):
             self.logger.error(f"Error creating serializable packet: {e}", exc_info=True)
             return None   
     
-    def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
-        """Get the appropriate Redis channel for a message type."""
-        channel_map = {
-            "text": RedisConst.CHANNEL_TEXT,
-            "node": RedisConst.CHANNEL_NODE,
-            "telemetry": RedisConst.CHANNEL_TELEMETRY_DEVICE,
-        }
-        channel = channel_map.get(msg_type)
-        self.logger.debug(f"Channel for message type {msg_type}: {channel}")
-        return channel
-    
     async def subscribe_gui(self, channels):
         """Subscribe to GUI update channels."""
         try:
@@ -187,16 +198,3 @@ class GuiRedisHandler(RedisHandler):
         except Exception as e:
             self.logger.error(f"Error in message listener: {e}", exc_info=True)
             raise
-
-    async def cleanup(self):
-        """Clean up Redis connections."""
-        try:
-            self.logger.debug("Starting GUI cleanup")
-            self._running = False  # Stop heartbeat and message processing
-            await self.pubsub.unsubscribe()
-            self.logger.debug("Unsubscribed from pubsub")
-            await self.pubsub.close()
-            self.logger.debug("Closed pubsub")
-            # Don't call super().close() here since we handle it ourselves
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {e}")
