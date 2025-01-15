@@ -22,60 +22,35 @@ class GuiRedisHandler(RedisHandler):
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
         self.logger.info("GUI message publisher started")
-        
+    
         while True:
             try:
-                await self._process_message_queue()
+                self.logger.debug("Checking message queue...")
+                if self.message_queue.qsize() > 0:
+                    message = await self.message_queue.get()
+                    try:
+                        self.logger.debug(f"Processing message of type: {message['type']}")
+                        await self.data_handler.process_packet(
+                            message["packet"], message["type"]
+                        )
+                        clean_packet = self._create_serializable_packet(message["packet"])
+                        channel = self._get_channel_for_message(message["type"])
+                    
+                        if channel:
+                            self.logger.debug(f"Publishing to channel: {channel}")
+                            await self.client.publish(channel, json.dumps({
+                                "type": message["type"],
+                                "packet": clean_packet,
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                            self.logger.debug("Successfully published to Redis")
+                    finally:
+                        self.message_queue.task_done()
+                else:
+                    await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
             except Exception as e:
-                self.logger.error(f"Error in GUI message publisher: {e}")
-                # Don't exit loop on error, just continue
-                continue
-
-    async def _process_message_queue(self):
-        """Check queue and process any waiting messages."""
-        self.logger.debug("Checking message queue...")  # Debug at start
-        
-        size = self.message_queue.qsize()
-        if size > 0:
-            self.logger.debug(f"Processing message queue, size: {size}")
-            message = await self.message_queue.get()
-            try:
-                await self._process_message(message)
-            finally:
-                self.message_queue.task_done()
-            self.logger.debug("Finished processing message")
-        else:
-            await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-    
-    async def _process_message(self, message):
-        """Process message and publish GUI updates."""
-        try:
-            self.logger.debug(f"Processing message of type: {message['type']}")
-            await self.data_handler.process_packet(
-                message["packet"], message["type"]
-            )
-            self.logger.debug("Packet processed by data handler")
-            
-            clean_packet = self._create_serializable_packet(message["packet"])
-            self.logger.debug("Packet cleaned for serialization")
-            
-            channel = self._get_channel_for_message(message["type"])
-            self.logger.debug(f"Publishing to channel: {channel}")
-            
-            if channel:
-                publish_data = {
-                    "type": message["type"],
-                    "packet": clean_packet,
-                    "timestamp": datetime.now().isoformat()
-                }
-                self.logger.debug(f"Publishing data: {str(publish_data)[:200]}...")
-                await self.client.publish(channel, json.dumps(publish_data))
-                self.logger.debug("Successfully published to Redis")
-            else:
-                self.logger.warning(f"No channel found for message type: {message['type']}")
-                
-        except Exception as e:
-            self.logger.error(f"Error processing {message['type']} packet: {e}", exc_info=True)
+                self.logger.error(f"Error in message publisher: {e}", exc_info=True)
+                # Continue the loop even if there's an error
 
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""
