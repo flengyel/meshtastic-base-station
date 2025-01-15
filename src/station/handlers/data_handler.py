@@ -225,8 +225,10 @@ class MeshtasticDataHandler:
             raise
 
     def _process_device_telemetry(self, packet: Dict[str, Any]) -> DeviceTelemetry:
+        # Log raw telemetry for debugging
+        self.logger.debug(f"Processing device telemetry packet: {packet}")
         """
-        Process device telemetry packet.
+        Process device telemetry packet with improved error handling.
 
         Args:
             packet: Raw packet dictionary
@@ -243,11 +245,11 @@ class MeshtasticDataHandler:
                 'from_num': int(packet['from']),
                 'from_id': str(packet['fromId']),
                 'device_metrics': {
-                    'battery_level': int(device_metrics['batteryLevel']),
-                    'voltage': float(device_metrics['voltage']),
+                    'battery_level': int(device_metrics.get('batteryLevel', 0)),
+                    'voltage': float(device_metrics.get('voltage', 0.0)),
                     'channel_utilization': float(device_metrics.get('channelUtilization', 0.0)),
-                    'air_util_tx': float(device_metrics['airUtilTx']),
-                    'uptime_seconds': int(device_metrics['uptimeSeconds'])
+                    'air_util_tx': float(device_metrics.get('airUtilTx', 0.0)),
+                    'uptime_seconds': int(device_metrics.get('uptimeSeconds', 0))
                 },
                 'metrics': self._extract_metrics(packet),
                 'priority': packet.get('priority'),
@@ -255,10 +257,11 @@ class MeshtasticDataHandler:
             }
             validate_typed_dict(device_telemetry, DeviceTelemetry)
             return device_telemetry
+
         except Exception as e:
             self.logger.error(f"Error processing device telemetry: {e}", exc_info=True)
-            raise
-
+            raise    
+        
     def _process_network_telemetry(self, packet: Dict[str, Any]) -> NetworkTelemetry:
         """
         Process network telemetry packet.
