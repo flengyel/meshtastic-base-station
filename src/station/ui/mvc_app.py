@@ -8,7 +8,6 @@ from kivy.lang import Builder
 from kivy.core.text import LabelBase
 from kivy.graphics import Color, Rectangle
 
-
 import asyncio
 import json
 import logging
@@ -143,25 +142,23 @@ class MeshtasticBaseApp(App):
         try:
             self._running = True
             self.logger.debug("Starting app_func")
-            
-            # Load initial data
+        
+            # Load initial data before starting anything else
             await self.load_initial_data()
-            
-            # Create tasks
-            gui_task = asyncio.create_task(self.process_gui_messages())
+        
+            # Start Redis message processing
+            redis_task = asyncio.create_task(self.process_redis_messages())
+            self._tasks.append(redis_task)
+            self.logger.debug(f"Created Redis message task: {redis_task}")
+        
+            # Start Kivy event loop in a separate task
             kivy_task = asyncio.create_task(self._run_kivy())
-            publisher_task = asyncio.create_task(self.redis_handler.message_publisher())
-            
-            # Track all tasks
-            self._tasks.extend([gui_task, kivy_task, publisher_task])
-            
-            self.logger.debug(f"Created GUI processor task: {gui_task}")
+            self._tasks.append(kivy_task)
             self.logger.debug(f"Created Kivy task: {kivy_task}")
-            self.logger.debug(f"Created publisher task: {publisher_task}")
-            
-            # Wait for all tasks to complete
+        
+            # Wait for all tasks
             await asyncio.gather(*self._tasks)
-            
+        
         except Exception as e:
             self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
@@ -217,8 +214,6 @@ class MeshtasticBaseApp(App):
                 task.cancel()
         await self.redis_handler.cleanup()
 
-    # GuiRedisHandler does its own cleanup since it owns the tasks
-
     async def _run_kivy(self):
         """Run the Kivy event loop."""
         try:
@@ -229,6 +224,7 @@ class MeshtasticBaseApp(App):
         except Exception as e:
             self.logger.error(f"Error in Kivy mainloop: {str(e)}", exc_info=True)
             raise
+
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):

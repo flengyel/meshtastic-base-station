@@ -13,7 +13,7 @@ class GuiRedisHandler(RedisHandler):
                  logger: Optional[logging.Logger] = None):
         super().__init__(host, port, logger)
         self._tasks = []  # Store tasks for cleanup
-        self.gui_queue = asyncio.Queue()
+        self.gui_queue = asyncio.Queue()  # Queue for GUI messages
         self.logger.debug("GUI Redis handler initialized")
 
     async def heartbeat(self):
@@ -62,8 +62,8 @@ class GuiRedisHandler(RedisHandler):
                         # Prepare message for GUI
                         clean_packet = self._create_serializable_packet(message["packet"])
                         if clean_packet:
-                            # Put processed message on GUI queue
-                            await self.gui_queue.put({
+                            # Put processed message on GUI queue - use put_nowait to avoid blocking
+                            self.gui_queue.put_nowait({
                                 "type": message["type"],
                                 "packet": clean_packet,
                                 "timestamp": datetime.now().isoformat()
@@ -103,6 +103,7 @@ class GuiRedisHandler(RedisHandler):
             await super().close()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
 
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""
