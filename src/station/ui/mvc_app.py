@@ -184,20 +184,24 @@ class MeshtasticBaseApp(App):
             self._running = True
             self.logger.debug("Starting app_func")
         
-            # Load initial data before starting anything else
+            # Load initial data
             await self.load_initial_data()
         
-            # Start Redis message processing
+            # Create tasks
             redis_task = asyncio.create_task(self.process_redis_messages())
-            self._tasks.append(redis_task)
-            self.logger.debug(f"Created Redis message task: {redis_task}")
-        
-            # Start Kivy event loop in a separate task
             kivy_task = asyncio.create_task(self._run_kivy())
-            self._tasks.append(kivy_task)
-            self.logger.debug(f"Created Kivy task: {kivy_task}")
         
-            # Wait for all tasks
+            # Get and track the publisher task from the redis handler
+            publisher_task = asyncio.create_task(self.redis_handler.message_publisher())
+        
+            # Track all tasks
+            self._tasks.extend([redis_task, kivy_task, publisher_task])
+        
+            self.logger.debug(f"Created Redis message task: {redis_task}")
+            self.logger.debug(f"Created Kivy task: {kivy_task}")
+            self.logger.debug(f"Created publisher task: {publisher_task}")
+        
+            # Wait for all tasks to complete
             await asyncio.gather(*self._tasks)
         
         except Exception as e:
