@@ -167,6 +167,7 @@ class MeshtasticBaseApp(App):
                 task.cancel()
         await self.redis_handler.cleanup()
 
+# GuiRedisHandler does its own cleanup since it owns the tasks
     async def app_func(self):
         """Main async function."""
         try:
@@ -179,8 +180,6 @@ class MeshtasticBaseApp(App):
         except Exception as e:
             self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
-        finally:
-            await self.cleanup()
 
 
 class MessagesView(BoxLayout):
