@@ -143,13 +143,12 @@ class GuiRedisHandler(RedisHandler):
     async def cleanup(self):
         """Clean up Redis connections."""
         try:
-            self.logger.debug("Starting cleanup")
+            self.logger.debug("Starting GUI cleanup")
             self._running = False  # Stop heartbeat and message processing
             await self.pubsub.unsubscribe()
             self.logger.debug("Unsubscribed from pubsub")
             await self.pubsub.close()
             self.logger.debug("Closed pubsub")
-            await super().close()
-            self.logger.debug("Cleanup complete")
+            # Don't call super().close() here since we handle it ourselves
         except Exception as e:
-            self.logger.error(f"Error during cleanup: {e}")       
+            self.logger.error(f"Error during cleanup: {e}")

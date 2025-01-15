@@ -57,17 +57,19 @@ class RedisHandler:
 
     async def heartbeat(self):
         """Maintain Redis connection and monitor queue."""
+        self.logger.info("Starting Redis heartbeat")
         try:
             while self._running:
                 try:
                     await self.client.ping()
+                    self.logger.debug("Heartbeat ping successful")
                     qsize = self.message_queue.qsize()
                     if qsize > 0:
                         self.logger.debug(f"Queue size: {qsize}")
-                    await asyncio.sleep(1.0)  # 1 second heartbeat
+                    await asyncio.sleep(1.0)
                 except Exception as e:
                     self.logger.error(f"Heartbeat error: {e}")
-                    await asyncio.sleep(1.0)  # Keep trying even on error
+                    await asyncio.sleep(1.0)
         except asyncio.CancelledError:
             self.logger.info("Heartbeat shutting down")
             raise
