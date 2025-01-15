@@ -30,6 +30,7 @@ class GuiRedisHandler(RedisHandler):
 
     async def _process_message_queue(self):
         """Check queue and process any waiting messages."""
+        self.logger.debug("Checking message queue...")
         queue_size = self.message_queue.qsize()
         if queue_size > 0:
             self.logger.debug(f"Processing message queue, size: {queue_size}")
