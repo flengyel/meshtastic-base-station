@@ -124,7 +124,9 @@ class GuiRedisHandler(RedisHandler):
         """Subscribe to GUI update channels."""
         try:
             self.logger.debug(f"Attempting to subscribe to channels: {channels}")
-            await self.pubsub.subscribe(*channels)
+            # Add debug to see what's happening with subscription
+            subscription = await self.pubsub.subscribe(*channels)
+            self.logger.debug(f"Subscribe returned: {subscription}")
             self.logger.info(f"Successfully subscribed to channels: {channels}")
         except Exception as e:
             self.logger.error(f"Error subscribing to channels: {e}")
@@ -134,13 +136,15 @@ class GuiRedisHandler(RedisHandler):
         """Listen for GUI update messages."""
         try:
             self.logger.debug("Starting GUI message listener")
+            self.logger.debug("About to enter pubsub.listen() loop")
             async for message in self.pubsub.listen():
+                self.logger.debug(f"In pubsub.listen() loop, got message type: {message['type']}")
                 if message['type'] == 'message':
-                    self.logger.debug(f"Received pubsub message: {str(message['data'])[:200]}...")
+                    self.logger.debug(f"Got data message: {str(message['data'])[:200]}...")
                     yield message
-                await asyncio.sleep(0)  # Yield control to other tasks
+                await asyncio.sleep(0)  # Your sleep is good to keep
         except Exception as e:
-            self.logger.error(f"Error listening to Redis pubsub: {e}")
+            self.logger.error(f"Error listening to Redis pubsub: {e}", exc_info=True)
             raise
 
     async def cleanup(self):

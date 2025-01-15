@@ -91,6 +91,7 @@ class MeshtasticBaseApp(App):
         return self.root    
     
     async def process_redis_messages(self):
+        """Process messages from Redis pub/sub."""
         try:
             channels = [
                 RedisConst.CHANNEL_TEXT,
@@ -99,14 +100,17 @@ class MeshtasticBaseApp(App):
                 RedisConst.CHANNEL_TELEMETRY_NETWORK,
                 RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
             ]
+            self.logger.debug(f"Setting up Redis subscriptions for channels: {channels}")
             await self.redis_handler.subscribe_gui(channels)
-
+            self.logger.debug("Starting Redis message loop")
             async for message in self.redis_handler.listen_gui():
+                self.logger.debug(f"Received Redis message: {message['type']}")
                 if not self._running:
+                    self.logger.debug("Stopping Redis message processing")
                     break
-
                 if message['type'] == 'message':
                     data = json.loads(message['data'])
+                    self.logger.debug(f"Scheduling UI update for {data.get('type')}")
                     Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
 
         except asyncio.CancelledError:
@@ -167,7 +171,7 @@ class MeshtasticBaseApp(App):
                 task.cancel()
         await self.redis_handler.cleanup()
 
-# GuiRedisHandler does its own cleanup since it owns the tasks
+    # GuiRedisHandler does its own cleanup since it owns the tasks
     async def app_func(self):
         """Main async function."""
         try:
