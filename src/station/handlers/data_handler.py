@@ -428,7 +428,7 @@ class MeshtasticDataHandler:
                 if fmt_msg:  # Only add successfully formatted messages
                     formatted.append(fmt_msg)
                 else:
-                    self.logger.warning(f"Skipping malformed message")
+                    self.logger.warning("Skipping malformed message")
             except Exception as e:
                 self.logger.error(f"Error processing message: {e}")
                 continue

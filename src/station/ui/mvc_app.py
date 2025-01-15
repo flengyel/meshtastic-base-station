@@ -109,7 +109,7 @@ class MeshtasticBaseApp(App):
 
                 if message['type'] == 'message':
                     data = json.loads(message['data'])
-                    Clock.schedule_once(lambda dt: self.update_ui(data))
+                    Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
 
         except asyncio.CancelledError:
             self.logger.info("Redis message processor shutting down")

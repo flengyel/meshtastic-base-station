@@ -25,52 +25,54 @@ class GuiRedisHandler(RedisHandler):
         self.logger.info("GUI message publisher started")
         while True:
             try:
-                if self.message_queue.qsize() > 0:
-                    message = await self.message_queue.get()
-                    # Let data_handler process and store the packet
-                    try:
-                        await self.data_handler.process_packet(
-                            message["packet"], message["type"]
-                        )
-                    
-                        # Create a serializable version of the packet
-                        clean_packet = message["packet"].copy()
-                        if 'decoded' in clean_packet:
-                            decoded = clean_packet['decoded']
-                            if 'telemetry' in decoded:
-                                # Correctly access dictionary values
-                                telemetry = decoded['telemetry']
-                                telemetry_dict = {
-                                    'time': telemetry.get('time'),
-                                    'deviceMetrics': {
-                                        'batteryLevel': telemetry.get('deviceMetrics', {}).get('batteryLevel'),
-                                        'voltage': telemetry.get('deviceMetrics', {}).get('voltage'),
-                                        'channelUtilization': telemetry.get('deviceMetrics', {}).get('channelUtilization'),
-                                        'airUtilTx': telemetry.get('deviceMetrics', {}).get('airUtilTx'),
-                                        'uptimeSeconds': telemetry.get('deviceMetrics', {}).get('uptimeSeconds')
-                                    }
-                                }
-                                decoded['telemetry'] = telemetry_dict
-                            
-                            if isinstance(decoded['payload'], bytes):
-                                decoded['payload'] = str(decoded['payload'])
-
-                        # Publish to appropriate GUI channel
-                        channel = self._get_channel_for_message(message["type"])
-                        if channel:
-                            await self.client.publish(channel, json.dumps({
-                                "type": message["type"],
-                                "packet": clean_packet,
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                    except Exception as e:
-                        self.logger.error(f"Error processing {message['type']} packet {message['packet']}: {e}")
-                
-                    self.message_queue.task_done()
-                else:
-                    await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
+                await self._process_message_queue()
             except Exception as e:
                 self.logger.error(f"Error in GUI message publisher: {e}")
+
+    async def _process_message_queue(self):
+        if self.message_queue.qsize() > 0:
+            message = await self.message_queue.get()
+            await self._process_message(message)
+            self.message_queue.task_done()
+        else:
+            await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
+
+    async def _process_message(self, message):
+        try:
+            await self.data_handler.process_packet(
+                message["packet"], message["type"]
+            )
+            clean_packet = self._create_serializable_packet(message["packet"])
+            channel = self._get_channel_for_message(message["type"])
+            if channel:
+                await self.client.publish(channel, json.dumps({
+                    "type": message["type"],
+                    "packet": clean_packet,
+                    "timestamp": datetime.now().isoformat()
+                }))
+        except Exception as e:
+            self.logger.error(f"Error processing {message['type']} packet {message['packet']}: {e}")
+
+    def _create_serializable_packet(self, packet):
+        clean_packet = packet.copy()
+        if 'decoded' in clean_packet:
+            decoded = clean_packet['decoded']
+            if 'telemetry' in decoded:
+                telemetry = decoded['telemetry']
+                telemetry_dict = {
+                    'time': telemetry.get('time'),
+                    'deviceMetrics': {
+                        'batteryLevel': telemetry.get('deviceMetrics', {}).get('batteryLevel'),
+                        'voltage': telemetry.get('deviceMetrics', {}).get('voltage'),
+                        'channelUtilization': telemetry.get('deviceMetrics', {}).get('channelUtilization'),
+                        'airUtilTx': telemetry.get('deviceMetrics', {}).get('airUtilTx'),
+                        'uptimeSeconds': telemetry.get('deviceMetrics', {}).get('uptimeSeconds')
+                    }
+                }
+                decoded['telemetry'] = telemetry_dict
+            if isinstance(decoded['payload'], bytes):
+                decoded['payload'] = str(decoded['payload'])
+        return clean_packet
 
     def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
         """Get the appropriate Redis channel for a message type."""

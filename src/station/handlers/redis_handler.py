@@ -164,111 +164,123 @@ class RedisHandler:
             cutoff_str = cutoff_time.isoformat()
         
             for key in self.keys.values():
-                try:
-                    # Get all items
-                    items = await self.load(key)
-                    cleaned = []
-                    removed = 0
-                    malformed = 0
-                
-                    for item in items:
-                        if not item:  # Skip None or empty strings
-                            removed += 1
-                            continue
-                        
-                        try:
-                            data = json.loads(item)
-                            if not isinstance(data, dict):
-                                malformed += 1
-                                continue
-                            
-                            timestamp = data.get('timestamp')
-                            if not timestamp:
-                                malformed += 1
-                                continue
-                            
-                            if timestamp >= cutoff_str:
-                                cleaned.append(item)
-                            else:
-                                removed += 1
-                            
-                        except (json.JSONDecodeError, TypeError, ValueError):
-                            malformed += 1
-                            continue
-                
-                    # Delete the key and add back cleaned items
-                    await self.client.delete(key)
-                    if cleaned:
-                        await self.client.rpush(key, *cleaned)
-                
-                    self.logger.info(
-                        f"Cleaned {key}: removed {removed} old items, "
-                        f"found {malformed} malformed items, kept {len(cleaned)} items"
-                    )
-                
-                except Exception as e:
-                    self.logger.error(f"Error cleaning {key}: {str(e)}")
-                    continue
+                await self._cleanup_key(key, cutoff_str)
                 
         except Exception as e:
             self.logger.error(f"Error during cleanup: {str(e)}")
+
+    async def _cleanup_key(self, key: str, cutoff_str: str):
+        """Helper function to clean up a specific key."""
+        try:
+            items = await self.load(key)
+            cleaned, removed, malformed = await self._process_items(items, cutoff_str)
+            
+            await self.client.delete(key)
+            if cleaned:
+                await self.client.rpush(key, *cleaned)
+            
+            self.logger.info(
+                f"Cleaned {key}: removed {removed} old items, "
+                f"found {malformed} malformed items, kept {len(cleaned)} items"
+            )
+        except Exception as e:
+            self.logger.error(f"Error cleaning {key}: {str(e)}")
+
+    async def _process_items(self, items: list, cutoff_str: str):
+        """Helper function to process items for cleanup."""
+        cleaned = []
+        removed = 0
+        malformed = 0
+        
+        for item in items:
+            if not item:
+                removed += 1
+                continue
+            
+            try:
+                data = json.loads(item)
+                if not isinstance(data, dict):
+                    malformed += 1
+                    continue
+                
+                timestamp = data.get('timestamp')
+                if not timestamp:
+                    malformed += 1
+                    continue
+                
+                if timestamp >= cutoff_str:
+                    cleaned.append(item)
+                else:
+                    removed += 1
+                
+            except json.JSONDecodeError:
+                malformed += 1
+                continue
+        
+        return cleaned, removed, malformed
 
     async def cleanup_corrupted_data(self):
         """Remove any entries that can't be parsed as JSON or lack required fields."""
         try:
             for key in self.keys.values():
-                try:
-                    items = await self.load(key)
-                    valid_items = []
-                    corrupted = 0
-                    missing_fields = 0
-                
-                    required_fields = {
-                        'meshtastic:messages': ['timestamp', 'from_id', 'to_id', 'text'],
-                        'meshtastic:nodes': ['timestamp', 'from_id', 'user'],
-                        'meshtastic:telemetry:device': ['timestamp', 'from_id', 'device_metrics'],
-                        'meshtastic:telemetry:network': ['timestamp', 'from_id', 'local_stats'],
-                        'meshtastic:telemetry:environment': ['timestamp', 'from_id', 'environment_metrics']
-                    }
-                
-                    for item in items:
-                        if not item:  # Skip None or empty strings
-                            corrupted += 1
-                            continue
-                        
-                        try:
-                            data = json.loads(item)
-                            if not isinstance(data, dict):
-                                corrupted += 1
-                                continue
-                            
-                            # Check required fields for this key type
-                            fields = required_fields.get(key, ['timestamp'])  # Default to just timestamp
-                            if all(field in data for field in fields):
-                                valid_items.append(item)
-                            else:
-                                missing_fields += 1
-                            
-                        except (json.JSONDecodeError, TypeError):
-                            corrupted += 1
-                            continue
-                
-                    # Replace with valid items
-                    await self.client.delete(key)
-                    if valid_items:
-                        await self.client.rpush(key, *valid_items)
-                    
-                    self.logger.info(
-                        f"Cleaned corrupted data from {key}: "
-                        f"found {corrupted} corrupted items, "
-                        f"{missing_fields} items with missing fields, "
-                        f"kept {len(valid_items)} valid items"
-                    )
-                
-                except Exception as e:
-                    self.logger.error(f"Error cleaning corrupted data from {key}: {str(e)}")
-                    continue
-                
+                await self._cleanup_key_corrupted_data(key)
         except Exception as e:
             self.logger.error(f"Error during corrupted data cleanup: {str(e)}")
+
+    async def _cleanup_key_corrupted_data(self, key: str):
+        """Helper function to clean up corrupted data for a specific key."""
+        try:
+            items = await self.load(key)
+            valid_items, corrupted, missing_fields = await self._process_corrupted_items(items, key)
+            
+            await self.client.delete(key)
+            if valid_items:
+                await self.client.rpush(key, *valid_items)
+            
+            self.logger.info(
+                f"Cleaned corrupted data from {key}: "
+                f"found {corrupted} corrupted items, "
+                f"{missing_fields} items with missing fields, "
+                f"kept {len(valid_items)} valid items"
+            )
+        except Exception as e:
+            self.logger.error(f"Error cleaning corrupted data from {key}: {str(e)}")
+
+    async def _process_corrupted_items(self, items: list, key: str):
+        """Helper function to process items for corrupted data cleanup."""
+        valid_items = []
+        corrupted = 0
+        missing_fields = 0
+        
+        required_fields = {
+            'meshtastic:messages': ['timestamp', 'from_id', 'to_id', 'text'],
+            'meshtastic:nodes': ['timestamp', 'from_id', 'user'],
+            'meshtastic:telemetry:device': ['timestamp', 'from_id', 'device_metrics'],
+            'meshtastic:telemetry:network': ['timestamp', 'from_id', 'local_stats'],
+            'meshtastic:telemetry:environment': ['timestamp', 'from_id', 'environment_metrics']
+        }
+        
+        for item in items:
+            if not item:  # Skip None or empty strings
+                corrupted += 1
+                continue
+            
+            try:
+                data = json.loads(item)
+                if not isinstance(data, dict):
+                    corrupted += 1
+                    continue
+                
+                # Check required fields for this key type
+                fields = required_fields.get(key, ['timestamp'])  # Default to just timestamp
+                if all(field in data for field in fields):
+                    valid_items.append(item)
+                else:
+                    missing_fields += 1
+                
+            except (json.JSONDecodeError, TypeError):
+                corrupted += 1
+                continue
+        
+        return valid_items, corrupted, missing_fields
 
