@@ -21,12 +21,14 @@ class GuiRedisHandler(RedisHandler):
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-        self.logger.info("GUI message publisher started")
-    
-        while True:
-            try:
-                self.logger.debug("Checking message queue...")
-                if self.message_queue.qsize() > 0:
+        
+        try:
+            self.logger.info("GUI message publisher started")
+            # Start heartbeat coroutine
+            heartbeat_task = asyncio.create_task(self.heartbeat())
+            
+            while self._running:
+                try:
                     message = await self.message_queue.get()
                     try:
                         self.logger.debug(f"Processing message of type: {message['type']}")
@@ -46,11 +48,20 @@ class GuiRedisHandler(RedisHandler):
                             self.logger.debug("Successfully published to Redis")
                     finally:
                         self.message_queue.task_done()
-                else:
-                    await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-            except Exception as e:
-                self.logger.error(f"Error in message publisher: {e}", exc_info=True)
-                # Continue the loop even if there's an error
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing message: {e}", exc_info=True)
+                    continue
+                    
+        except asyncio.CancelledError:
+            self.logger.info("GUI message publisher shutting down")
+            self._running = False
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            raise
 
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""
@@ -113,6 +124,7 @@ class GuiRedisHandler(RedisHandler):
         """Clean up Redis connections."""
         try:
             self.logger.debug("Starting cleanup")
+            self._running = False  # Stop heartbeat and message processing
             await self.pubsub.unsubscribe()
             self.logger.debug("Unsubscribed from pubsub")
             await self.pubsub.close()
@@ -120,4 +132,4 @@ class GuiRedisHandler(RedisHandler):
             await super().close()
             self.logger.debug("Cleanup complete")
         except Exception as e:
-            self.logger.error(f"Error during cleanup: {e}")
+            self.logger.error(f"Error during cleanup: {e}")       
