@@ -66,26 +66,46 @@ class GuiRedisHandler(RedisHandler):
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""
         self.logger.debug("Creating serializable packet")
-        clean_packet = packet.copy()
-        if 'decoded' in clean_packet:
-            decoded = clean_packet['decoded']
-            if 'telemetry' in decoded:
-                telemetry = decoded['telemetry']
-                telemetry_dict = {
-                    'time': telemetry.get('time'),
-                    'deviceMetrics': {
-                        'batteryLevel': telemetry.get('deviceMetrics', {}).get('batteryLevel'),
-                        'voltage': telemetry.get('deviceMetrics', {}).get('voltage'),
-                        'channelUtilization': telemetry.get('deviceMetrics', {}).get('channelUtilization'),
-                        'airUtilTx': telemetry.get('deviceMetrics', {}).get('airUtilTx'),
-                        'uptimeSeconds': telemetry.get('deviceMetrics', {}).get('uptimeSeconds')
-                    }
-                }
-                decoded['telemetry'] = telemetry_dict
-            if isinstance(decoded['payload'], bytes):
-                decoded['payload'] = str(decoded['payload'])
-        self.logger.debug("Packet cleaned for serialization")
-        return clean_packet
+        try:
+            # Convert packet to dict if it's not already
+            packet_dict = dict(packet) if not isinstance(packet, dict) else packet.copy()
+            
+            # Handle decoded field specially
+            if 'decoded' in packet_dict:
+                decoded = dict(packet_dict['decoded']) if not isinstance(packet_dict['decoded'], dict) else packet_dict['decoded'].copy()
+                
+                # Handle payload
+                if 'payload' in decoded:
+                    if isinstance(decoded['payload'], bytes):
+                        decoded['payload'] = str(decoded['payload'])
+                
+                # Handle telemetry
+                if 'telemetry' in decoded:
+                    telemetry = decoded['telemetry']
+                    if not isinstance(telemetry, dict):
+                        telemetry = dict(telemetry)
+                    
+                    # Convert all telemetry values to basic Python types
+                    if 'deviceMetrics' in telemetry:
+                        telemetry['deviceMetrics'] = dict(telemetry['deviceMetrics'])
+                    if 'localStats' in telemetry:
+                        telemetry['localStats'] = dict(telemetry['localStats'])
+                    if 'environmentMetrics' in telemetry:
+                        telemetry['environmentMetrics'] = dict(telemetry['environmentMetrics'])
+                    
+                    decoded['telemetry'] = telemetry
+                
+                packet_dict['decoded'] = decoded
+            
+            # Convert 'raw' field to string if present
+            if 'raw' in packet_dict:
+                packet_dict['raw'] = str(packet_dict['raw'])
+                
+            return packet_dict
+            
+        except Exception as e:
+            self.logger.error(f"Error creating serializable packet: {e}", exc_info=True)
+            raise
 
     def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
         """Get the appropriate Redis channel for a message type."""
