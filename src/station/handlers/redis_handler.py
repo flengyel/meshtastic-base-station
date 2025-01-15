@@ -34,6 +34,7 @@ class RedisHandler:
         self.logger = logger.getChild(__name__) if logger else logging.getLogger(__name__)
         self.message_queue = asyncio.Queue()
         self.data_handler = None  # to be set by a method by delayed assignment
+        self._running = True 
         
         try:
             self.client = aioredis.Redis(host=host, port=port, decode_responses=True)            
@@ -54,20 +55,38 @@ class RedisHandler:
     def set_data_handler(self, data_handler: MeshtasticDataHandler) -> None:
         self.data_handler = data_handler
 
+    async def heartbeat(self):
+        """Maintain Redis connection and monitor queue."""
+        try:
+            while self._running:
+                try:
+                    await self.client.ping()
+                    qsize = self.message_queue.qsize()
+                    if qsize > 0:
+                        self.logger.debug(f"Queue size: {qsize}")
+                    await asyncio.sleep(1.0)  # 1 second heartbeat
+                except Exception as e:
+                    self.logger.error(f"Heartbeat error: {e}")
+                    await asyncio.sleep(1.0)  # Keep trying even on error
+        except asyncio.CancelledError:
+            self.logger.info("Heartbeat shutting down")
+            raise
+
     async def message_publisher(self):
         """Process messages from queue and store in Redis."""
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-        
+    
         try:
             self.logger.info("Message publisher started")
-            while True:
+            heartbeat_task = asyncio.create_task(self.heartbeat())
+        
+            while self._running:
                 try:
                     message = await self.message_queue.get()
                     msg_type = message["type"]
                     packet = message["packet"]
-
                     # Let data_handler process and store the packet
                     try:
                         await self.data_handler.process_packet(packet, msg_type)
@@ -76,13 +95,19 @@ class RedisHandler:
                         continue
                     finally:
                         self.message_queue.task_done()
-             
+         
                 except Exception as e:
                     self.logger.error(f"Error processing message: {e}", exc_info=True)
                     continue
-                    
+                
         except asyncio.CancelledError:
             self.logger.info("Message publisher shutting down")
+            self._running = False
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
             raise
 
     async def verify_connection(self) -> bool:
@@ -150,6 +175,7 @@ class RedisHandler:
 
     async def close(self):
         """Close Redis connection."""
+        self._running = False
         await self.client.close()
 
 # cleanup methods
