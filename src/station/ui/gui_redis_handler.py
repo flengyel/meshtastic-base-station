@@ -22,26 +22,31 @@ class GuiRedisHandler(RedisHandler):
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
         self.logger.info("GUI message publisher started")
+        
         while True:
             try:
                 await self._process_message_queue()
             except Exception as e:
                 self.logger.error(f"Error in GUI message publisher: {e}")
+                # Don't exit loop on error, just continue
+                continue
 
     async def _process_message_queue(self):
         """Check queue and process any waiting messages."""
-        self.logger.debug("Checking message queue...")
-        queue_size = self.message_queue.qsize()
-        if queue_size > 0:
-            self.logger.debug(f"Processing message queue, size: {queue_size}")
+        self.logger.debug("Checking message queue...")  # Debug at start
+        
+        size = self.message_queue.qsize()
+        if size > 0:
+            self.logger.debug(f"Processing message queue, size: {size}")
             message = await self.message_queue.get()
-            self.logger.debug(f"Got message from queue: {message['type']}")
-            await self._process_message(message)
-            self.message_queue.task_done()
-            self.logger.debug("Message processing complete")
+            try:
+                await self._process_message(message)
+            finally:
+                self.message_queue.task_done()
+            self.logger.debug("Finished processing message")
         else:
             await asyncio.sleep(RedisConst.DISPATCH_SLEEP)
-
+    
     async def _process_message(self, message):
         """Process message and publish GUI updates."""
         try:
