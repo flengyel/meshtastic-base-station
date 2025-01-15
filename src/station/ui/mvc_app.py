@@ -15,7 +15,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 from src.station.config.base_config import BaseStationConfig
-from src.station.utils.constants import RedisConst
 from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
@@ -89,41 +88,82 @@ class MeshtasticBaseApp(App):
         self.root.add_widget(tabs)
         self.logger.debug("Added TabbedPanel to root")
         return self.root    
-    
-    async def process_redis_messages(self):
-        """Process messages from Redis pub/sub."""
+
+    async def gui_heartbeat(self):
+        """Monitor GUI queue."""
+        self.logger.info("Starting GUI heartbeat")
         try:
-            channels = [
-                RedisConst.CHANNEL_TEXT,
-                RedisConst.CHANNEL_NODE, 
-                RedisConst.CHANNEL_TELEMETRY_DEVICE,
-                RedisConst.CHANNEL_TELEMETRY_NETWORK,
-                RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
-            ]
-            self.logger.debug(f"Setting up Redis subscriptions for channels: {channels}")
-            await self.redis_handler.subscribe_gui(channels)
-            self.logger.debug("Starting Redis message loop")
-        
             while self._running:
                 try:
-                    async for message in self.redis_handler.listen_gui():
-                        if not self._running:
-                            break
-                        if message['type'] == 'message':
-                            data = json.loads(message['data'])
-                            Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
-                    
-                        # Let other tasks run
-                        await asyncio.sleep(0.01)
-                    
-                except asyncio.TimeoutError:
-                    continue
+                    qsize = self.redis_handler.gui_queue.qsize()
+                    if qsize > 0:
+                        self.logger.debug(f"GUI Queue size: {qsize}")
+                    await asyncio.sleep(1.0)
                 except Exception as e:
-                    self.logger.error(f"Error processing Redis messages: {e}")
-                    await asyncio.sleep(1)  # Back off on error
-                
+                    self.logger.error(f"GUI Heartbeat error: {e}")
+                    await asyncio.sleep(1.0)
         except asyncio.CancelledError:
-            self.logger.info("Redis message processor shutting down")
+            self.logger.info("GUI heartbeat shutting down")
+            raise
+
+    async def process_gui_messages(self):
+        """Process messages from GUI queue."""
+        try:
+            self.logger.debug("Starting GUI message processor")
+            heartbeat_task = asyncio.create_task(self.gui_heartbeat())
+            self._tasks.append(heartbeat_task)
+            
+            while self._running:
+                try:
+                    # Get message from GUI queue
+                    message = await self.redis_handler.gui_queue.get()
+                    self.logger.debug(f"Got GUI message: {message['type']}")
+                    
+                    # Schedule UI update
+                    Clock.schedule_once(lambda dt, data=message: self.update_ui(data))
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    self.logger.error(f"Error processing GUI message: {e}")
+                    await asyncio.sleep(1)  # Back off on error
+                    
+        except asyncio.CancelledError:
+            self.logger.info("GUI message processor shutting down")
+            raise
+        finally:
+            if heartbeat_task:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+    async def app_func(self):
+        """Main async function."""
+        try:
+            self._running = True
+            self.logger.debug("Starting app_func")
+            
+            # Load initial data
+            await self.load_initial_data()
+            
+            # Create tasks
+            gui_task = asyncio.create_task(self.process_gui_messages())
+            kivy_task = asyncio.create_task(self._run_kivy())
+            publisher_task = asyncio.create_task(self.redis_handler.message_publisher())
+            
+            # Track all tasks
+            self._tasks.extend([gui_task, kivy_task, publisher_task])
+            
+            self.logger.debug(f"Created GUI processor task: {gui_task}")
+            self.logger.debug(f"Created Kivy task: {kivy_task}")
+            self.logger.debug(f"Created publisher task: {publisher_task}")
+            
+            # Wait for all tasks to complete
+            await asyncio.gather(*self._tasks)
+            
+        except Exception as e:
+            self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
 
     def update_ui(self, data):
@@ -178,35 +218,6 @@ class MeshtasticBaseApp(App):
         await self.redis_handler.cleanup()
 
     # GuiRedisHandler does its own cleanup since it owns the tasks
-    async def app_func(self):
-        """Main async function."""
-        try:
-            self._running = True
-            self.logger.debug("Starting app_func")
-        
-            # Load initial data
-            await self.load_initial_data()
-        
-            # Create tasks
-            redis_task = asyncio.create_task(self.process_redis_messages())
-            kivy_task = asyncio.create_task(self._run_kivy())
-        
-            # Get and track the publisher task from the redis handler
-            publisher_task = asyncio.create_task(self.redis_handler.message_publisher())
-        
-            # Track all tasks
-            self._tasks.extend([redis_task, kivy_task, publisher_task])
-        
-            self.logger.debug(f"Created Redis message task: {redis_task}")
-            self.logger.debug(f"Created Kivy task: {kivy_task}")
-            self.logger.debug(f"Created publisher task: {publisher_task}")
-        
-            # Wait for all tasks to complete
-            await asyncio.gather(*self._tasks)
-        
-        except Exception as e:
-            self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
-            raise
 
     async def _run_kivy(self):
         """Run the Kivy event loop."""

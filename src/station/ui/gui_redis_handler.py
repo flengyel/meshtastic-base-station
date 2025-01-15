@@ -12,12 +12,32 @@ class GuiRedisHandler(RedisHandler):
                  port: int = RedisConst.DEFAULT_PORT, 
                  logger: Optional[logging.Logger] = None):
         super().__init__(host, port, logger)
-        self.pubsub = self.client.pubsub()
         self._tasks = []  # Store tasks for cleanup
+        self.gui_queue = asyncio.Queue()
         self.logger.debug("GUI Redis handler initialized")
 
+    async def heartbeat(self):
+        """Maintain Redis connection and monitor queues."""
+        self.logger.info("Starting GUI Redis heartbeat")
+        try:
+            while self._running:
+                try:
+                    await self.client.ping()
+                    self.logger.debug("Heartbeat ping successful")
+                    msg_qsize = self.message_queue.qsize()
+                    gui_qsize = self.gui_queue.qsize()
+                    if msg_qsize > 0 or gui_qsize > 0:
+                        self.logger.debug(f"Queue sizes - Message: {msg_qsize}, GUI: {gui_qsize}")
+                    await asyncio.sleep(1.0)
+                except Exception as e:
+                    self.logger.error(f"Heartbeat error: {e}")
+                    await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            self.logger.info("Heartbeat shutting down")
+            raise
+
     async def message_publisher(self):
-        """Process messages and publish GUI updates."""
+        """Process messages and enqueue for GUI."""
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
@@ -25,71 +45,61 @@ class GuiRedisHandler(RedisHandler):
         try:
             self.logger.info("GUI message publisher started")
             heartbeat_task = asyncio.create_task(self.heartbeat())
-            self._tasks.append(heartbeat_task)  # Track the heartbeat task
-        
-            try:
-                while self._running:
+            self._tasks.append(heartbeat_task)
+            
+            while self._running:
+                try:
+                    # Get message from main queue
+                    message = await self.message_queue.get()
                     try:
-                        # Process messages from queue
-                        message = await self.message_queue.get()
-                        try:
-                            self.logger.debug(f"Processing message of type: {message['type']}")
-                            await self.data_handler.process_packet(
-                                message["packet"], message["type"]
-                            )
-                            clean_packet = self._create_serializable_packet(message["packet"])
-                            channel = self._get_channel_for_message(message["type"])
+                        self.logger.debug(f"Processing message of type: {message['type']}")
                         
-                            if channel:
-                                self.logger.debug(f"Publishing to channel: {channel}")
-                                await self.client.publish(channel, json.dumps({
-                                    "type": message["type"],
-                                    "packet": clean_packet,
-                                    "timestamp": datetime.now().isoformat()
-                                }))
-                                self.logger.debug("Successfully published to Redis")
-                        except Exception as e:
-                            self.logger.error(f"Error processing message: {e}", exc_info=True)
-                        finally:
-                            self.message_queue.task_done()
+                        # Let data handler process and store the packet
+                        await self.data_handler.process_packet(
+                            message["packet"], message["type"]
+                        )
                         
+                        # Prepare message for GUI
+                        clean_packet = self._create_serializable_packet(message["packet"])
+                        if clean_packet:
+                            # Put processed message on GUI queue
+                            await self.gui_queue.put({
+                                "type": message["type"],
+                                "packet": clean_packet,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            self.logger.debug("Successfully queued message for GUI")
                     except Exception as e:
-                        self.logger.error(f"Error in message loop: {e}", exc_info=True)
-                        continue
-                    
-            finally:
-                # Make sure we clean up the heartbeat task
-                if not heartbeat_task.done():
-                    heartbeat_task.cancel()
-                    try:
-                        await heartbeat_task
-                    except asyncio.CancelledError:
-                        pass
+                        self.logger.error(f"Error processing message: {e}", exc_info=True)
+                    finally:
+                        self.message_queue.task_done()
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in message loop: {e}", exc_info=True)
+                    continue
                     
         except asyncio.CancelledError:
             self.logger.info("GUI message publisher shutting down")
-            raise  # Re-raise to signal cancellation
+            self._running = False
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            raise
 
-    def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
-        """Get the appropriate Redis channel for a message type."""
-        channel_map = {
-            "text": RedisConst.CHANNEL_TEXT,
-            "node": RedisConst.CHANNEL_NODE,
-            "telemetry": RedisConst.CHANNEL_TELEMETRY_DEVICE,
-        }
-        channel = channel_map.get(msg_type)
-        self.logger.debug(f"Channel for message type {msg_type}: {channel}")
-        return channel
-        
     async def cleanup(self):
-        """Clean up Redis connections."""
+        """Clean up tasks and connections."""
         try:
             self.logger.debug("Starting GUI cleanup")
             self._running = False
-            await self.pubsub.unsubscribe()
-            self.logger.debug("Unsubscribed from pubsub")
-            await self.pubsub.close()
-            self.logger.debug("Closed pubsub")
+            for task in self._tasks:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
             await super().close()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
@@ -168,46 +178,3 @@ class GuiRedisHandler(RedisHandler):
             self.logger.error(f"Error creating serializable packet: {e}", exc_info=True)
             return None   
     
-    async def subscribe_gui(self, channels):
-        """Subscribe to GUI update channels."""
-        try:
-            self.logger.debug(f"Attempting to subscribe to channels: {channels}")
-            # Add debug to see what's happening with subscription
-            subscription = await self.pubsub.subscribe(*channels)
-            self.logger.debug(f"Subscribe returned: {subscription}")
-            self.logger.info(f"Successfully subscribed to channels: {channels}")
-        except Exception as e:
-            self.logger.error(f"Error subscribing to channels: {e}")
-            raise
-
-    async def listen_gui(self):
-        """Listen for GUI update messages."""
-        try:
-            self.logger.debug("Starting GUI message listener")
-        
-            async for message in self.pubsub.listen():
-                if not self._running:
-                    self.logger.debug("Listener shutting down")
-                    break
-            
-                try:
-                    self.logger.debug(f"Got message type: {message['type']}")
-                    if message['type'] == 'message':
-                        self.logger.debug(f"Got data message: {str(message['data'])[:200]}...")
-                        yield message  # Yield the message to the caller
-                
-                    # Yield control to allow other tasks to run
-                    await asyncio.sleep(0)
-            
-                except Exception as e:
-                    self.logger.error(f"Error processing message: {e}", exc_info=True)
-                    continue
-
-        except asyncio.CancelledError:
-            self.logger.info("Message listener cancelled")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error in message listener: {e}", exc_info=True)
-            raise
-        finally:
-            self.logger.debug("Listener exiting cleanly")
