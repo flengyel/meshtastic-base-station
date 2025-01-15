@@ -95,17 +95,20 @@ pyyaml    # For configuration
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/flengyel/meshtastic-base-station.git
    cd meshtastic-base-station
    ```
 
 2. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. Start Redis:
+
    ```bash
    redis-server
    ```
@@ -152,6 +155,7 @@ The system uses a hierarchical configuration approach:
 4. Default values (lowest priority)
 
 Configuration files are searched for in:
+
 1. Specified path (--config option)
 2. Current directory (./config.yaml)
 3. User config (~/.config/meshtastic/config.yaml)
@@ -174,6 +178,7 @@ export MESHTASTIC_LOG_LEVEL=INFO
 The system supports both standard and custom log levels:
 
 Standard Levels:
+
 - DEBUG: Detailed debugging information
 - INFO: General operational information
 - WARNING: Warning messages
@@ -181,6 +186,7 @@ Standard Levels:
 - CRITICAL: Critical errors that may prevent operation
 
 Custom Levels:
+
 - PACKET: Meshtastic packet traffic (level 15)
 - DATA: Telemetry data processing (level 16)
 - REDIS: Redis storage operations (level 17)
@@ -189,24 +195,27 @@ Custom Levels:
 
 Logging can be configured through:
 
-1. Command line options:
-```bash
---log INFO,PACKET           # Show specific levels
---log DEBUG --threshold    # Show DEBUG and above
---no-file-logging         # Console output only
-```
-
-2. Configuration file:
-```yaml
-log_cfg:
-  level: INFO
+#### 1. Command line options
+  
+```bash  
+--log INFO,PACKET           # Show specific levels  
+--log DEBUG --threshold    # Show DEBUG and above  
+--no-file-logging         # Console output only  
+```  
+  
+#### 2. Configuration files  
+  
+```yaml  
+log_cfg:  
+  level: INFO  
   file: meshtastic.log
   use_threshold: false
   format: "%(asctime)s %(levelname)s:%(name)s:%(message)s"
   debugging: false
-```
-
-3. Environment variables:
+```  
+  
+#### 3. Environment variables  
+  
 ```bash
 export MESHTASTIC_LOG_LEVEL=INFO,PACKET
 ```
@@ -214,17 +223,20 @@ export MESHTASTIC_LOG_LEVEL=INFO,PACKET
 ### Log Output Examples
 
 Device Telemetry:
-```
+
+```bash
 DEBUG:handlers.data_handler:Device telemetry from !f7f9e240: battery=101%, voltage=4.20V
 ```
 
 Network Status:
-```
+
+```bash
 DEBUG:handlers.data_handler:Network telemetry: 13/57 nodes online
 ```
 
 Redis Operations:
-```
+
+```bash
 REDIS:handlers.redis_handler:Loaded 47 items from meshtastic:nodes
 ```
 
@@ -266,16 +278,19 @@ Other Options:
 ### Example Commands
 
 View packet data with remote Redis:
+
 ```bash
 python mesh_console.py --redis-host pironman5.local --log PACKET
 ```
 
 Monitor telemetry on Windows:
+
 ```bash
 python mesh_console.py --device COM3 --log DATA
 ```
 
 Display stored data:
+
 ```bash
 python mesh_console.py --display-redis
 ```
@@ -295,11 +310,13 @@ Messages and telemetry are stored as JSON, preserving complete packet informatio
 ### Redis CLI Examples
 
 View recent telemetry:
+
 ```bash
 redis-cli -h pironman5.local LRANGE meshtastic:telemetry:device 0 10
 ```
 
 Check node status:
+
 ```bash
 redis-cli -h pironman5.local HGETALL meshtastic:nodes
 ```
@@ -354,4 +371,3 @@ GNU General Public License v3.0 - see [GNU GPL v3.0](https://www.gnu.org/license
 
 - [Meshtastic Project](https://meshtastic.org)
 - Contributors to the Meshtastic Python API
-
