@@ -114,7 +114,7 @@ class MeshtasticBaseApp(App):
                             Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
                     
                         # Let other tasks run
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0.01)
                     
                 except asyncio.TimeoutError:
                     continue

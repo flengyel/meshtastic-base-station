@@ -184,22 +184,30 @@ class GuiRedisHandler(RedisHandler):
         """Listen for GUI update messages."""
         try:
             self.logger.debug("Starting GUI message listener")
+        
             async for message in self.pubsub.listen():
                 if not self._running:
                     self.logger.debug("Listener shutting down")
                     break
+            
+                try:
+                    self.logger.debug(f"Got message type: {message['type']}")
+                    if message['type'] == 'message':
+                        self.logger.debug(f"Got data message: {str(message['data'])[:200]}...")
+                        yield message  # Yield the message to the caller
                 
-                self.logger.debug(f"Got message type: {message['type']}")
-                if message['type'] == 'message':
-                    self.logger.debug(f"Got data message: {str(message['data'])[:200]}...")
-                    yield message
+                    # Yield control to allow other tasks to run
+                    await asyncio.sleep(0)
             
-                # Let other tasks run
-                await asyncio.sleep(0.1)
-            
+                except Exception as e:
+                    self.logger.error(f"Error processing message: {e}", exc_info=True)
+                    continue
+
         except asyncio.CancelledError:
             self.logger.info("Message listener cancelled")
             raise
         except Exception as e:
             self.logger.error(f"Error in message listener: {e}", exc_info=True)
             raise
+        finally:
+            self.logger.debug("Listener exiting cleanly")
