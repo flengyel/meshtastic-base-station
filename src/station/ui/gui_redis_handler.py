@@ -26,7 +26,9 @@ class GuiRedisHandler(RedisHandler):
             self.logger.info("GUI message publisher started")
             # Start heartbeat coroutine
             heartbeat_task = asyncio.create_task(self.heartbeat())
-            
+            # is the heartbeat task running?
+            self.logger.debug(f"Heartbeat task started with ID: {id(heartbeat_task)}")
+
             while self._running:
                 try:
                     message = await self.message_queue.get()
