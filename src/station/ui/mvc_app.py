@@ -95,7 +95,7 @@ class MeshtasticBaseApp(App):
         try:
             channels = [
                 RedisConst.CHANNEL_TEXT,
-                RedisConst.CHANNEL_NODE,
+                RedisConst.CHANNEL_NODE, 
                 RedisConst.CHANNEL_TELEMETRY_DEVICE,
                 RedisConst.CHANNEL_TELEMETRY_NETWORK,
                 RedisConst.CHANNEL_TELEMETRY_ENVIRONMENT
@@ -103,21 +103,27 @@ class MeshtasticBaseApp(App):
             self.logger.debug(f"Setting up Redis subscriptions for channels: {channels}")
             await self.redis_handler.subscribe_gui(channels)
             self.logger.debug("Starting Redis message loop")
-            async for message in self.redis_handler.listen_gui():
-                self.logger.debug(f"Received Redis message: {message['type']}")
-                if not self._running:
-                    self.logger.debug("Stopping Redis message processing")
-                    break
-                if message['type'] == 'message':
-                    data = json.loads(message['data'])
-                    self.logger.debug(f"Scheduling UI update for {data.get('type')}")
-                    Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
-
+        
+            while self._running:
+                try:
+                    async for message in self.redis_handler.listen_gui():
+                        if not self._running:
+                            break
+                        if message['type'] == 'message':
+                            data = json.loads(message['data'])
+                            Clock.schedule_once(lambda dt, data=data: self.update_ui(data))
+                    
+                        # Let other tasks run
+                        await asyncio.sleep(0.1)
+                    
+                except asyncio.TimeoutError:
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Error processing Redis messages: {e}")
+                    await asyncio.sleep(1)  # Back off on error
+                
         except asyncio.CancelledError:
             self.logger.info("Redis message processor shutting down")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error processing Redis messages: {e}")
             raise
 
     def update_ui(self, data):
