@@ -138,6 +138,7 @@ class GuiRedisHandler(RedisHandler):
                 if message['type'] == 'message':
                     self.logger.debug(f"Received pubsub message: {str(message['data'])[:200]}...")
                     yield message
+                await asyncio.sleep(0)  # Yield control to other tasks
         except Exception as e:
             self.logger.error(f"Error listening to Redis pubsub: {e}")
             raise
