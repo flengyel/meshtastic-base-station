@@ -71,44 +71,74 @@ class GuiRedisHandler(RedisHandler):
         try:
             # Convert packet to dict if it's not already
             packet_dict = dict(packet) if not isinstance(packet, dict) else packet.copy()
-            
+        
             # Handle decoded field specially
             if 'decoded' in packet_dict:
                 decoded = dict(packet_dict['decoded']) if not isinstance(packet_dict['decoded'], dict) else packet_dict['decoded'].copy()
+            
+                # Handle telemetry data
+                if 'telemetry' in decoded:
+                    telemetry = decoded['telemetry']
+                    telemetry_dict = {}
                 
-                # Handle payload
+                    # Extract deviceMetrics if present
+                    if hasattr(telemetry, 'deviceMetrics') or 'deviceMetrics' in telemetry:
+                        metrics = getattr(telemetry, 'deviceMetrics', telemetry.get('deviceMetrics', {}))
+                        telemetry_dict['deviceMetrics'] = {
+                            'batteryLevel': getattr(metrics, 'batteryLevel', metrics.get('batteryLevel')),
+                            'voltage': float(getattr(metrics, 'voltage', metrics.get('voltage', 0))),
+                            'channelUtilization': float(getattr(metrics, 'channelUtilization', metrics.get('channelUtilization', 0))),
+                            'airUtilTx': float(getattr(metrics, 'airUtilTx', metrics.get('airUtilTx', 0))),
+                            'uptimeSeconds': int(getattr(metrics, 'uptimeSeconds', metrics.get('uptimeSeconds', 0)))
+                        }
+                
+                    # Extract localStats if present
+                    if hasattr(telemetry, 'localStats') or 'localStats' in telemetry:
+                        stats = getattr(telemetry, 'localStats', telemetry.get('localStats', {}))
+                        telemetry_dict['localStats'] = {
+                            'numOnlineNodes': int(getattr(stats, 'numOnlineNodes', stats.get('numOnlineNodes', 0))),
+                            'numTotalNodes': int(getattr(stats, 'numTotalNodes', stats.get('numTotalNodes', 0))),
+                            'numPacketsRx': int(getattr(stats, 'numPacketsRx', stats.get('numPacketsRx', 0))),
+                            'numPacketsTx': int(getattr(stats, 'numPacketsTx', stats.get('numPacketsTx', 0))),
+                            'channelUtilization': float(getattr(stats, 'channelUtilization', stats.get('channelUtilization', 0)))
+                        }
+                
+                    # Extract environmentMetrics if present
+                    if hasattr(telemetry, 'environmentMetrics') or 'environmentMetrics' in telemetry:
+                        env = getattr(telemetry, 'environmentMetrics', telemetry.get('environmentMetrics', {}))
+                        telemetry_dict['environmentMetrics'] = {
+                            'temperature': float(getattr(env, 'temperature', env.get('temperature', 0))),
+                            'relativeHumidity': float(getattr(env, 'relativeHumidity', env.get('relativeHumidity', 0))),
+                            'barometricPressure': float(getattr(env, 'barometricPressure', env.get('barometricPressure', 0)))
+                        }
+                
+                    # Add time if present
+                    if hasattr(telemetry, 'time') or 'time' in telemetry:
+                        telemetry_dict['time'] = getattr(telemetry, 'time', telemetry.get('time'))
+                
+                    decoded['telemetry'] = telemetry_dict
+            
+                # Handle text messages
+                if 'text' in decoded:
+                    decoded['text'] = str(decoded['text'])
+            
+                # Handle payload (convert bytes to string)
                 if 'payload' in decoded:
                     if isinstance(decoded['payload'], bytes):
                         decoded['payload'] = str(decoded['payload'])
-                
-                # Handle telemetry
-                if 'telemetry' in decoded:
-                    telemetry = decoded['telemetry']
-                    if not isinstance(telemetry, dict):
-                        telemetry = dict(telemetry)
-                    
-                    # Convert all telemetry values to basic Python types
-                    if 'deviceMetrics' in telemetry:
-                        telemetry['deviceMetrics'] = dict(telemetry['deviceMetrics'])
-                    if 'localStats' in telemetry:
-                        telemetry['localStats'] = dict(telemetry['localStats'])
-                    if 'environmentMetrics' in telemetry:
-                        telemetry['environmentMetrics'] = dict(telemetry['environmentMetrics'])
-                    
-                    decoded['telemetry'] = telemetry
-                
-                packet_dict['decoded'] = decoded
             
+                packet_dict['decoded'] = decoded
+        
             # Convert 'raw' field to string if present
             if 'raw' in packet_dict:
                 packet_dict['raw'] = str(packet_dict['raw'])
-                
+            
             return packet_dict
             
         except Exception as e:
             self.logger.error(f"Error creating serializable packet: {e}", exc_info=True)
-            raise
-
+            return None   
+    
     def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
         """Get the appropriate Redis channel for a message type."""
         channel_map = {
