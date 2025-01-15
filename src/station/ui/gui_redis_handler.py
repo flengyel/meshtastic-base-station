@@ -8,8 +8,11 @@ from src.station.utils.constants import RedisConst
 
 class GuiRedisHandler(RedisHandler):
     
-    def __init__(self, host: str = RedisConst.DEFAULT_HOST, port: int = RedisConst.DEFAULT_PORT, 
+    def __init__(self, 
+                 host: str = RedisConst.DEFAULT_HOST, 
+                 port: int = RedisConst.DEFAULT_PORT, 
                  logger: Optional[logging.Logger] = None):
+        
         super().__init__(host, port, logger)
         self.pubsub = self.client.pubsub()
         self.logger.debug("GUI Redis handler initialized")
@@ -19,32 +22,46 @@ class GuiRedisHandler(RedisHandler):
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-
         self.logger.info("GUI message publisher started")
         while True:
             try:
                 if self.message_queue.qsize() > 0:
                     message = await self.message_queue.get()
-
                     # Let data_handler process and store the packet
                     try:
                         await self.data_handler.process_packet(
                             message["packet"], message["type"]
                         )
                     
-                        # Publish notification to the appropriate GUI channel
+                        # Create a serializable version of the packet
+                        clean_packet = message["packet"].copy()
+                        if 'decoded' in clean_packet:
+                            decoded = clean_packet['decoded']
+                            if 'telemetry' in decoded:
+                                # Convert telemetry to dict
+                                telemetry_dict = {
+                                    'time': decoded['telemetry'].time,
+                                    'deviceMetrics': {
+                                        'batteryLevel': decoded['telemetry'].deviceMetrics.batteryLevel,
+                                        'voltage': decoded['telemetry'].deviceMetrics.voltage,
+                                        'channelUtilization': decoded['telemetry'].deviceMetrics.channelUtilization,
+                                        'airUtilTx': decoded['telemetry'].deviceMetrics.airUtilTx,
+                                        'uptimeSeconds': decoded['telemetry'].deviceMetrics.uptimeSeconds
+                                    }
+                                }
+                                decoded['telemetry'] = telemetry_dict
+                            
+                            if isinstance(decoded['payload'], bytes):
+                                decoded['payload'] = str(decoded['payload'])
+
+                        # Publish to appropriate GUI channel
                         channel = self._get_channel_for_message(message["type"])
                         if channel:
-                            # Clean the packet for JSON serialization
-                            clean_packet = message["packet"].copy()
-                            if 'decoded' in clean_packet and 'payload' in clean_packet['decoded']:
-                                clean_packet['decoded']['payload'] = str(clean_packet['decoded']['payload'])
-            
                             await self.client.publish(channel, json.dumps({
-                                                        "type": message["type"],
-                                                        "packet": clean_packet,
-                                                        "timestamp": datetime.now().isoformat()
-                                                    }))                    
+                                "type": message["type"],
+                                "packet": clean_packet,
+                                "timestamp": datetime.now().isoformat()
+                            }))
                     except Exception as e:
                         self.logger.error(f"Error processing {message['type']} packet {message['packet']}: {e}")
                 
