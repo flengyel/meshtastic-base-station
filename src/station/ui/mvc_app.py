@@ -175,12 +175,14 @@ class MeshtasticBaseApp(App):
             self.logger.debug("Starting app_func")
             # Load initial data before starting Kivy
             await self.load_initial_data()
+            # Start Redis message processing
+            redis_task = asyncio.create_task(self.process_redis_messages())
+            self._tasks.append(redis_task)
             self.logger.debug("Starting Kivy mainloop")
             self.run()  # Kivy's mainloop
         except Exception as e:
             self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
             raise
-
 
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
