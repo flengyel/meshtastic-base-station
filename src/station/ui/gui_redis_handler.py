@@ -38,15 +38,16 @@ class GuiRedisHandler(RedisHandler):
                         if 'decoded' in clean_packet:
                             decoded = clean_packet['decoded']
                             if 'telemetry' in decoded:
-                                # Convert telemetry to dict
+                                # Correctly access dictionary values
+                                telemetry = decoded['telemetry']
                                 telemetry_dict = {
-                                    'time': decoded['telemetry'].time,
+                                    'time': telemetry.get('time'),
                                     'deviceMetrics': {
-                                        'batteryLevel': decoded['telemetry'].deviceMetrics.batteryLevel,
-                                        'voltage': decoded['telemetry'].deviceMetrics.voltage,
-                                        'channelUtilization': decoded['telemetry'].deviceMetrics.channelUtilization,
-                                        'airUtilTx': decoded['telemetry'].deviceMetrics.airUtilTx,
-                                        'uptimeSeconds': decoded['telemetry'].deviceMetrics.uptimeSeconds
+                                        'batteryLevel': telemetry.get('deviceMetrics', {}).get('batteryLevel'),
+                                        'voltage': telemetry.get('deviceMetrics', {}).get('voltage'),
+                                        'channelUtilization': telemetry.get('deviceMetrics', {}).get('channelUtilization'),
+                                        'airUtilTx': telemetry.get('deviceMetrics', {}).get('airUtilTx'),
+                                        'uptimeSeconds': telemetry.get('deviceMetrics', {}).get('uptimeSeconds')
                                     }
                                 }
                                 decoded['telemetry'] = telemetry_dict
