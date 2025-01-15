@@ -21,49 +21,54 @@ class GuiRedisHandler(RedisHandler):
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-        
+    
         try:
             self.logger.info("GUI message publisher started")
             heartbeat_task = asyncio.create_task(self.heartbeat())
-            self._tasks.append(heartbeat_task)
-            
-            while self._running:
-                try:
-                    message = await self.message_queue.get()
+            self._tasks.append(heartbeat_task)  # Track the heartbeat task
+        
+            try:
+                while self._running:
                     try:
-                        self.logger.debug(f"Processing message of type: {message['type']}")
-                        await self.data_handler.process_packet(
-                            message["packet"], message["type"]
-                        )
-                        clean_packet = self._create_serializable_packet(message["packet"])
-                        channel = self._get_channel_for_message(message["type"])
+                        # Process messages from queue
+                        message = await self.message_queue.get()
+                        try:
+                            self.logger.debug(f"Processing message of type: {message['type']}")
+                            await self.data_handler.process_packet(
+                                message["packet"], message["type"]
+                            )
+                            clean_packet = self._create_serializable_packet(message["packet"])
+                            channel = self._get_channel_for_message(message["type"])
                         
-                        if channel:
-                            self.logger.debug(f"Publishing to channel: {channel}")
-                            await self.client.publish(channel, json.dumps({
-                                "type": message["type"],
-                                "packet": clean_packet,
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                            self.logger.debug("Successfully published to Redis")
+                            if channel:
+                                self.logger.debug(f"Publishing to channel: {channel}")
+                                await self.client.publish(channel, json.dumps({
+                                    "type": message["type"],
+                                    "packet": clean_packet,
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                                self.logger.debug("Successfully published to Redis")
+                        except Exception as e:
+                            self.logger.error(f"Error processing message: {e}", exc_info=True)
+                        finally:
+                            self.message_queue.task_done()
+                        
                     except Exception as e:
-                        self.logger.error(f"Error processing message: {e}", exc_info=True)
-                    finally:
-                        self.message_queue.task_done()
-                        
-                except Exception as e:
-                    self.logger.error(f"Error in message loop: {e}", exc_info=True)
-                    continue
+                        self.logger.error(f"Error in message loop: {e}", exc_info=True)
+                        continue
+                    
+            finally:
+                # Make sure we clean up the heartbeat task
+                if not heartbeat_task.done():
+                    heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
                     
         except asyncio.CancelledError:
             self.logger.info("GUI message publisher shutting down")
-            self._running = False
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
-            raise
+            raise  # Re-raise to signal cancellation
 
     def _get_channel_for_message(self, msg_type: str) -> Optional[str]:
         """Get the appropriate Redis channel for a message type."""
