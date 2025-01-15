@@ -14,6 +14,7 @@ class GuiRedisHandler(RedisHandler):
                  logger: Optional[logging.Logger] = None):
         super().__init__(host, port, logger)
         self.pubsub = self.client.pubsub()
+        self._tasks = [] # Store tasks for cleanup
         self.logger.debug("GUI Redis handler initialized")
 
     async def message_publisher(self):
@@ -21,14 +22,12 @@ class GuiRedisHandler(RedisHandler):
         if self.data_handler is None:
             self.logger.critical("Meshtastic Data handler not set")
             raise ValueError("Meshtastic Data handler not set")
-        
+    
         try:
             self.logger.info("GUI message publisher started")
-            # Start heartbeat coroutine
             heartbeat_task = asyncio.create_task(self.heartbeat())
-            # is the heartbeat task running?
-            self.logger.debug(f"Heartbeat task started with ID: {id(heartbeat_task)}")
-
+            self._tasks.append(heartbeat_task)  # Track the task for cleanup
+            
             while self._running:
                 try:
                     message = await self.message_queue.get()
@@ -48,11 +47,13 @@ class GuiRedisHandler(RedisHandler):
                                 "timestamp": datetime.now().isoformat()
                             }))
                             self.logger.debug("Successfully published to Redis")
+                    except Exception as e:
+                        self.logger.error(f"Error processing message: {e}", exc_info=True)
                     finally:
                         self.message_queue.task_done()
-                        
+                    
                 except Exception as e:
-                    self.logger.error(f"Error processing message: {e}", exc_info=True)
+                    self.logger.error(f"Error in message loop: {e}", exc_info=True)
                     continue
                     
         except asyncio.CancelledError:
@@ -64,6 +65,7 @@ class GuiRedisHandler(RedisHandler):
             except asyncio.CancelledError:
                 pass
             raise
+
 
     def _create_serializable_packet(self, packet):
         """Create a JSON-serializable version of the packet."""

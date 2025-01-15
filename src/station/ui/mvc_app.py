@@ -177,15 +177,36 @@ class MeshtasticBaseApp(App):
         try:
             self._running = True
             self.logger.debug("Starting app_func")
-            # Load initial data before starting Kivy
+        
+            # Load initial data before starting anything else
             await self.load_initial_data()
+        
             # Start Redis message processing
             redis_task = asyncio.create_task(self.process_redis_messages())
             self._tasks.append(redis_task)
-            self.logger.debug("Starting Kivy mainloop")
-            self.run()  # Kivy's mainloop
+            self.logger.debug(f"Created Redis message task: {redis_task}")
+        
+            # Start Kivy event loop in a separate task
+            kivy_task = asyncio.create_task(self._run_kivy())
+            self._tasks.append(kivy_task)
+            self.logger.debug(f"Created Kivy task: {kivy_task}")
+        
+            # Wait for all tasks
+            await asyncio.gather(*self._tasks)
+        
         except Exception as e:
             self.logger.error(f"Error in app_func: {str(e)}", exc_info=True)
+            raise
+
+    async def _run_kivy(self):
+        """Run the Kivy event loop."""
+        try:
+            self.logger.debug("Starting Kivy mainloop")
+            # Run Kivy mainloop
+            self.run()
+            self.logger.debug("Kivy mainloop ended")
+        except Exception as e:
+            self.logger.error(f"Error in Kivy mainloop: {str(e)}", exc_info=True)
             raise
 
 class MessagesView(BoxLayout):
