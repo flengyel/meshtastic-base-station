@@ -6,6 +6,8 @@ from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.core.text import LabelBase
+from kivy.graphics import Color, Rectangle
+
 
 import asyncio
 import json
@@ -17,10 +19,6 @@ from src.station.utils.constants import RedisConst
 from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
-
-# Load the Kivy UI definition
-# we're doing this too many times
-# Builder.load_file('src/station/ui/meshtasticbase.kv')
 
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
@@ -184,55 +182,90 @@ class MeshtasticBaseApp(App):
         finally:
             await self.cleanup()
 
+
 class MessagesView(BoxLayout):
     def __init__(self, **kwargs):
-        # Pop our custom station_config before calling super().__init__
-        # The kwargs.pop() pattern is specifically needed for widget classes in Kivy 
-        # (like MessagesView, etc) because they inherit from Kivy widgets which have 
-        # strict property requirements.
-        
-        self.station_config = kwargs.pop('station_config', None)  
+        self.station_config = kwargs.pop('station_config', None)
         super().__init__(**kwargs)
         self.orientation = 'vertical'
-
+        
         # Use configured monospace font if config is provided
-        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None        
+        self.monospace_font = self.station_config.ui_cfg.monospace_font if self.station_config else None
 
         # Add a title label
         self.title = Label(
-            text='Messages',
+            text='Text Messages',
             size_hint_y=None,
             height='40dp',
-            bold=True
+            bold=True,
+            halign='left'
         )
+        self.title.bind(size=self.title.setter('text_size'))
         self.add_widget(self.title)
         
         # Create scrollview with container
-        self.scroll = ScrollView(size_hint=(1, 1))
+        self.scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,  # Vertical scrolling only
+            bar_width='10dp',
+            scroll_type=['bars', 'content']
+        )
+        
+        # Message container setup
         self.container = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            spacing='5dp',
-            padding='5dp'
+            spacing='2dp',  # Small gap between messages
+            padding='10dp'  # Padding around all messages
         )
         self.container.bind(minimum_height=self.container.setter('height'))
+        
         self.scroll.add_widget(self.container)
         self.add_widget(self.scroll)
 
     def update_messages(self, messages):
-        """Update the messages display."""
+        """Update the text messages display."""
         self.container.clear_widgets()
         for message in messages:
-            text = f"[{message['timestamp']}] {message['from']} -> {message['to']}: {message['text']}"
+            # Format message text
+            text = (f"[{message['timestamp']}] "
+                   f"{message['from']} → {message['to']}: "
+                   f"{message['text']}")
+            
+            # Create message label with fixed height and proper alignment
             label = Label(
                 text=text,
                 size_hint_y=None,
-                height='40dp',
-                text_size=(self.width * 0.9, None),
+                height='30dp',  # Fixed height for each message
+                font_name=self.monospace_font,
                 halign='left',
-                font_name=self.monospace_font
+                valign='middle'
             )
+            
+            # Enable text wrapping by binding text size to label width
+            label.bind(
+                width=lambda lb, w: setattr(lb, 'text_size', (w - 20, lb.height))
+            )
+            
+            # Add background for better readability
+            with label.canvas.before:
+                Color(0.15, 0.15, 0.15, 1)  # Slightly lighter than black
+                Rectangle(pos=label.pos, size=label.size)
+            
+            # Update rectangle position when label moves
+            label.bind(pos=self._update_rect, size=self._update_rect)
+            
             self.container.add_widget(label)
+        
+        # Scroll to bottom for newest messages
+        self.scroll.scroll_y = 0
+
+    def _update_rect(self, instance, value):
+        """Update the background rectangle when the label moves."""
+        instance.canvas.before.clear()
+        with instance.canvas.before:
+            Color(0.15, 0.15, 0.15, 1)
+            Rectangle(pos=instance.pos, size=instance.size)
 
 class NodesView(BoxLayout):
     def __init__(self,  config: Optional[BaseStationConfig] = None, **kwargs):
