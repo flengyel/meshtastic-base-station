@@ -104,45 +104,51 @@ class BaseStationConfig:
         cls,
         path: Optional[str] = None,
         logger: Optional[logging.Logger] = None
-    ) -> "BaseStationConfig": # Not BaseStationConst!
+    ) -> "BaseStationConfig":
         """
         Load configuration from 'path' or from default paths.
         Use a child logger if one is passed; otherwise use our module-level logger.
         """
-        # If a logger is provided, nest logs under '...BaseStationConfig'
+        logger = cls._get_logger(logger)
+        config = cls._load_from_path(path, logger) if path else cls._load_from_default_paths(logger)
+        cls._apply_env_overrides(config)
+        return config
+
+    @staticmethod
+    def _get_logger(logger: Optional[logging.Logger]) -> logging.Logger:
         if logger:
-            logger = logger.getChild("BaseStationConfig")
-        else:
-            logger = logging.getLogger(__name__)
+            return logger.getChild("BaseStationConfig")
+        return logging.getLogger(__name__)
 
-        if path:
-            custom_path = Path(path)
-            if custom_path.exists():
+    @classmethod
+    def _load_from_path(cls, path: str, logger: logging.Logger) -> "BaseStationConfig":
+        custom_path = Path(path)
+        if custom_path.exists():
+            try:
+                config = cls.from_yaml(str(custom_path))
+                logger.info(f"Loaded configuration from {custom_path}")
+                return config
+            except Exception as e:
+                logger.warning(f"Error loading config from {custom_path}: {e}")
+        else:
+            logger.warning(f"Specified config file {custom_path} not found; using defaults.")
+        return cls()
+
+    @classmethod
+    def _load_from_default_paths(cls, logger: logging.Logger) -> "BaseStationConfig":
+        for config_path in [Path(p) for p in BaseStationConst.CONFIG_PATHS]:
+            if config_path.exists():
                 try:
-                    config = cls.from_yaml(str(custom_path))
-                    logger.info(f"Loaded configuration from {custom_path}")
+                    config = cls.from_yaml(str(config_path))
+                    logger.info(f"Loaded configuration from {config_path}")
+                    return config
                 except Exception as e:
-                    logger.warning(f"Error loading config from {custom_path}: {e}")
-                    config = cls()
-            else:
-                logger.warning(f"Specified config file {custom_path} not found; using defaults.")
-                config = cls()
-        else:
-            # Default search logic
-            config = None
-            for config_path in [Path(p) for p in BaseStationConst.CONFIG_PATHS]:
-                if config_path.exists():
-                    try:
-                        config = cls.from_yaml(str(config_path))
-                        logger.info(f"Loaded configuration from {config_path}")
-                        break
-                    except Exception as e:
-                        logger.warning(f"Error loading config from {config_path}: {e}")
-            if config is None:
-                config = cls()
-                logger.info("Using default configuration")
+                    logger.warning(f"Error loading config from {config_path}: {e}")
+        logger.info("Using default configuration")
+        return cls()
 
-        # Environment variable overrides
+    @classmethod
+    def _apply_env_overrides(cls, config: "BaseStationConfig") -> None:
         if os.getenv('MESHTASTIC_REDIS_HOST'):
             config.redis.host = os.getenv('MESHTASTIC_REDIS_HOST')
         if os.getenv('MESHTASTIC_REDIS_PORT'):
@@ -153,6 +159,4 @@ class BaseStationConfig:
             config.device.port = os.getenv('MESHTASTIC_DEVICE_PORT')
         if os.getenv('MESHTASTIC_LOG_LEVEL'):
             config.log_cfg.level = os.getenv('MESHTASTIC_LOG_LEVEL')
-
-        return config
 
