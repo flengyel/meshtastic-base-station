@@ -20,7 +20,7 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import LoggingConst
 from src.station.config.base_config import BaseStationConfig
 from src.station.handlers.meshtastic_handler import MeshtasticHandler
-from src.station.ui.terminal_ui import TerminalUI
+from src.station.ui.factory import create_ui  # Use factory instead of direct import
 
 def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
@@ -35,7 +35,7 @@ def suggest_available_ports(logger: logging.Logger) -> None:
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def setup_redis(station_config, logger) -> RedisHandler:
+async def setup_redis(station_config, logger) -> Optional[RedisHandler]:
     """Initialize Redis handler."""
     try:
         redis_handler = RedisHandler(
@@ -54,11 +54,11 @@ async def setup_redis(station_config, logger) -> RedisHandler:
         logger.error(f"Failed to initialize Redis: {e}")
         return None
 
-async def setup_meshtastic(args, redis_handler, logger) -> tuple:
+async def setup_meshtastic(device_path, redis_handler, logger) -> tuple:
     """Initialize Meshtastic interface and handler."""
     try:
-        interface = SerialInterface(args.device)
-        logger.debug(f"Connected to serial device: {args.device}")
+        interface = SerialInterface(device_path)
+        logger.debug(f"Connected to serial device: {device_path}")
         
         meshtastic_handler = MeshtasticHandler(
             redis_handler=redis_handler,
@@ -68,11 +68,11 @@ async def setup_meshtastic(args, redis_handler, logger) -> tuple:
         await meshtastic_handler.initialize_connected_node()
         return interface, meshtastic_handler
     except FileNotFoundError:
-        logger.error(f"Cannot connect to serial device {args.device}: Device not found")
+        logger.error(f"Cannot connect to serial device {device_path}: Device not found")
         suggest_available_ports(logger)
         return None, None
     except Exception as e:
-        logger.error(f"Cannot connect to serial device {args.device}: {e}")
+        logger.error(f"Cannot connect to serial device {device_path}: {e}")
         suggest_available_ports(logger)
         return None, None
 
@@ -197,7 +197,7 @@ async def main():
             return
 
         # Initialize Meshtastic
-        interface, meshtastic_handler = await setup_meshtastic(args, redis_handler, logger)
+        interface, meshtastic_handler = await setup_meshtastic(args.device, redis_handler, logger)
         if not interface or not meshtastic_handler:
             await redis_handler.close()
             return
@@ -233,7 +233,7 @@ async def main():
             station_config.redis.port = args.redis_port
 
         # Initialize handlers
-        redis_handler = await setup_redis(station_config, logger)
+        redis_handler = await setup_redis(args, station_config, logger)
         if not redis_handler:
             return
 
