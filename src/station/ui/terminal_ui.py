@@ -105,6 +105,14 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
     async def update(self):
         """Update the current view."""
         try:
+            # Only update every 1 second
+            await asyncio.sleep(1.0)
+            
+            # Draw border and header
+            self.screen.box()
+            self.screen.addstr(0, 2, " Meshtastic Base Station ")
+            
+            # Update based on current view
             if self.current_view == 'nodes':
                 nodes = await self.data_handler.get_formatted_nodes()
                 await self.refresh_nodes(nodes)
@@ -121,8 +129,11 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
                 telemetry = await self.data_handler.get_formatted_environment_telemetry()
                 await self.refresh_environment_telemetry(telemetry)
             
+            # Draw menu
+            menu = " [N]odes [M]essages [D]evice [T]elemetry [E]nvironment [Q]uit "
+            self.screen.addstr(self.max_lines-1, 0, menu)
+            
+            # Refresh screen
             self.screen.refresh()
         except Exception as e:
             self.logger.error(f"Error updating view: {e}")
-
-            
