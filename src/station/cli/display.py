@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 from src.station.utils.constants import DisplayConst
+from src.station.utils import logger 
 
 async def display_nodes(data_handler, logger: logging.Logger) -> None:
     """Display previously stored nodes in a formatted table."""

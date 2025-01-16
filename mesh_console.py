@@ -35,7 +35,7 @@ def suggest_available_ports(logger: logging.Logger) -> None:
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def setup_redis(args, station_config, logger) -> RedisHandler:
+async def setup_redis(station_config, logger) -> RedisHandler:
     """Initialize Redis handler."""
     try:
         redis_handler = RedisHandler(
@@ -181,7 +181,7 @@ async def main():
             station_config.redis.port = args.redis_port
 
         # Initialize handlers
-        redis_handler = await setup_redis(args, station_config, logger)
+        redis_handler = await setup_redis(station_config, logger)
         if not redis_handler:
             return
 
@@ -233,7 +233,7 @@ async def main():
             station_config.redis.port = args.redis_port
 
         # Initialize handlers
-        redis_handler = await setup_redis(args, station_config, logger)
+        redis_handler = await setup_redis(station_config, logger)
         if not redis_handler:
             return
 
