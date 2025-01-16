@@ -19,7 +19,7 @@ async def display_nodes(data_handler, logger: logging.Logger) -> None:
 
     # Calculate column widths
     timestamp_width = max(len("Timestamp"), max(len(node['timestamp']) for node in nodes))
-    id_width = max(len("Node ID"), max(len(node['id']) for node in nodes))
+    id_width = max(len(DisplayConst.NODE_ID), max(len(node['id']) for node in nodes))
     name_width = max(len("Name"), max(len(node['name']) for node in nodes))
 
     # Print header
@@ -66,13 +66,13 @@ async def display_messages(data_handler, logger: logging.Logger) -> None:
               f"{msg['to']:<{to_width}} | "
               f"{msg['text']}")
 
-async def display_telemetry(data_handler, logger: logging.Logger) -> None:
+async def display_telemetry(data_handler) -> None:
     """Display all types of telemetry data."""
-    await _display_device_telemetry(data_handler, logger)
-    await _display_network_telemetry(data_handler, logger)
-    await _display_environment_telemetry(data_handler, logger)
+    await _display_device_telemetry(data_handler)
+    await _display_network_telemetry(data_handler)
+    await _display_environment_telemetry(data_handler)
 
-async def _display_device_telemetry(data_handler, logger: logging.Logger) -> None:
+async def _display_device_telemetry(data_handler) -> None:
     """Display device telemetry data."""
     print("\n=== Device Telemetry ===")
     device_telemetry = await data_handler.get_formatted_device_telemetry()
@@ -86,7 +86,7 @@ async def _display_device_telemetry(data_handler, logger: logging.Logger) -> Non
         
         # Print header
         header = (f"{'Timestamp':<{timestamp_width}} | "
-                 f"{'Node ID':<{id_width}} | "
+                 f"{DisplayConst.NODE_ID:<{id_width}} | "
                  f"{'Battery':<8} | "
                  f"{'Voltage':<8} | "
                  f"{'Ch Util':<8}")
@@ -103,7 +103,7 @@ async def _display_device_telemetry(data_handler, logger: logging.Logger) -> Non
     else:
         print("[No device telemetry found]")
 
-async def _display_network_telemetry(data_handler, logger: logging.Logger) -> None:
+async def _display_network_telemetry(data_handler) -> None:
     """Display network telemetry data."""
     print("\n=== Network Telemetry ===")
     network_telemetry = await data_handler.get_formatted_network_telemetry()
@@ -111,7 +111,7 @@ async def _display_network_telemetry(data_handler, logger: logging.Logger) -> No
     if network_telemetry:
         timestamp_width = max(len("Timestamp"), 
                             max(len(t['timestamp']) for t in network_telemetry))
-        id_width = max(len("Node ID"), 
+        id_width = max(len(DisplayConst.NODE_ID), 
                       max(len(t['from_id']) for t in network_telemetry))
         
         header = (f"{'Timestamp':<{timestamp_width}} | "
@@ -132,7 +132,7 @@ async def _display_network_telemetry(data_handler, logger: logging.Logger) -> No
     else:
         print("[No network telemetry found]")
 
-async def _display_environment_telemetry(data_handler, logger: logging.Logger) -> None:
+async def _display_environment_telemetry(data_handler) -> None:
     """Display environment telemetry data."""
     print("\n=== Environment Telemetry ===")
     env_telemetry = await data_handler.get_formatted_environment_telemetry()

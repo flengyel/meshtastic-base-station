@@ -37,15 +37,7 @@ class RedisConst:
     KEY_TELEMETRY_DEVICE = "meshtastic:telemetry:device"
     KEY_TELEMETRY_NETWORK = "meshtastic:telemetry:network"
     KEY_TELEMETRY_ENVIRONMENT = "meshtastic:telemetry:environment"
-    
-    # Redis channels for pubsub
-    CHANNEL_TEXT = "meshtastic.text"
-    CHANNEL_NODE = "meshtastic.node"
-    CHANNEL_TELEMETRY_DEVICE = "meshtastic.telemetry.device"
-    CHANNEL_TELEMETRY_NETWORK = "meshtastic.telemetry.network"
-    CHANNEL_TELEMETRY_ENVIRONMENT = "meshtastic.telemetry.environment"
-    CHANNEL_PROCESSED = "meshtastic.processed"  # For GUI updates
-
+   
 # Meshtaastic Handler Configuration
 class MeshtasticConst:
     """Meshtastic-related constants."""
@@ -62,12 +54,13 @@ class DeviceConst:
     DEFAULT_BAUD_RATE = 115200
     DEFAULT_TIMEOUT = 1.0
 
-# Display Limits
+# Display Limits and strings
 class DisplayConst:
     """Display and formatting constants."""
     MAX_DEVICE_TELEMETRY = 10    # Number of device telemetry entries to show
     MAX_NETWORK_TELEMETRY = 5    # Number of network status entries to show
     MAX_DEBUG_STRING = 200       # Maximum length for debug output
+    NODE_ID = "Node ID"
 
 # Logging Configuration
 class LoggingConst:

@@ -9,7 +9,9 @@
 
 import asyncio
 import logging
+import argparse
 import serial.tools.list_ports
+from typing import Optional, Tuple
 from meshtastic.serial_interface import SerialInterface
 
 from src.station.cli.arg_parser import parse_args
@@ -20,8 +22,7 @@ from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.utils.constants import LoggingConst
 from src.station.config.base_config import BaseStationConfig
 from src.station.handlers.meshtastic_handler import MeshtasticHandler
-from src.station.ui.factory import create_ui, CursesUI
-
+from src.station.ui.factory import create_ui  # Use factory instead of direct import
 
 def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
@@ -36,8 +37,17 @@ def suggest_available_ports(logger: logging.Logger) -> None:
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def setup_redis(station_config, logger) -> RedisHandler:
-    """Initialize Redis handler."""
+async def setup_redis(station_config: BaseStationConfig, logger: logging.Logger) -> Optional[RedisHandler]:
+    """Initialize Redis handler.
+    
+    Args:
+        args: Command line arguments
+        station_config: Base station configuration
+        logger: Logger instance
+        
+    Returns:
+        Optional[RedisHandler]: Redis handler if successful, None otherwise
+    """
     try:
         redis_handler = RedisHandler(
             host=station_config.redis.host,
@@ -55,11 +65,11 @@ async def setup_redis(station_config, logger) -> RedisHandler:
         logger.error(f"Failed to initialize Redis: {e}")
         return None
 
-async def setup_meshtastic(args, redis_handler, logger) -> tuple:
+async def setup_meshtastic(device_path, redis_handler, logger) -> tuple:
     """Initialize Meshtastic interface and handler."""
     try:
-        interface = SerialInterface(args.device)
-        logger.debug(f"Connected to serial device: {args.device}")
+        interface = SerialInterface(device_path)
+        logger.debug(f"Connected to serial device: {device_path}")
         
         meshtastic_handler = MeshtasticHandler(
             redis_handler=redis_handler,
@@ -69,11 +79,11 @@ async def setup_meshtastic(args, redis_handler, logger) -> tuple:
         await meshtastic_handler.initialize_connected_node()
         return interface, meshtastic_handler
     except FileNotFoundError:
-        logger.error(f"Cannot connect to serial device {args.device}: Device not found")
+        logger.error(f"Cannot connect to serial device {device_path}: Device not found")
         suggest_available_ports(logger)
         return None, None
     except Exception as e:
-        logger.error(f"Cannot connect to serial device {args.device}: {e}")
+        logger.error(f"Cannot connect to serial device {device_path}: {e}")
         suggest_available_ports(logger)
         return None, None
 
@@ -109,15 +119,16 @@ async def handle_display(args, data_handler, redis_handler, logger) -> bool:
 
 async def monitor_mode(data_handler, meshtastic_handler, interface, redis_handler, logger):
     """Run in continuous monitoring mode with terminal UI."""
-    terminal = CursesUI(data_handler, logger)
+    # Create UI using factory with curses interface
+    ui = create_ui("curses", data_handler, logger)
     publisher_task = None
     
     try:
         # Start Redis message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
         
-        # Start terminal UI
-        await terminal.run()
+        # Start UI
+        await ui.run()
             
     except KeyboardInterrupt:
         logger.info("Monitoring stopped by user")
@@ -159,8 +170,6 @@ from src.station.utils.platform_utils import detect_platform, Platform
 async def main():
     """Main application entry point."""
     args = parse_args()
-    
-    # Configure logging
     logger = configure_logger(
         name=__name__,
         log_levels=args.log_levels,
@@ -170,103 +179,61 @@ async def main():
     )
 
     try:
-        # Log platform information
-        platform = detect_platform()
-        logger.info(f"Running on platform: {platform.name}")
-
-        # Load configuration
-        station_config = BaseStationConfig.load(path=args.config, logger=logger)
-        if args.redis_host:
-            station_config.redis.host = args.redis_host
-        if args.redis_port:
-            station_config.redis.port = args.redis_port
-
-        # Initialize handlers
-        redis_handler = await setup_redis(station_config, logger)
-        if not redis_handler:
-            return
-
-        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-        redis_handler.set_data_handler(data_handler)
-
-        # Handle cleanup if requested
-        if await handle_cleanup(args, redis_handler, logger):
-            return
-
-        # Handle display-only modes
-        if await handle_display(args, data_handler, redis_handler, logger):
-            return
-
-        # Initialize Meshtastic
-        interface, meshtastic_handler = await setup_meshtastic(args, redis_handler, logger)
-        if not interface or not meshtastic_handler:
-            await redis_handler.close()
-            return
-
-        # Create appropriate UI
-        ui = create_ui(args.ui, data_handler, logger)
-        
-        # Start publisher task
-        publisher_task = asyncio.create_task(redis_handler.message_publisher())
-        
-        try:
-            await ui.run()
-        finally:
-            publisher_task.cancel()
-            try:
-                await publisher_task
-            except asyncio.CancelledError:
-                pass
-            meshtastic_handler.cleanup()
-            interface.close()
-            await redis_handler.close()
-
+        await run_main_logic(args, logger)
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
 
+async def run_main_logic(args, logger):
+    """Run the main logic of the application."""
+    platform = detect_platform()
+    logger.info(f"Running on platform: {platform.name}")
+
+    station_config = load_configuration(args, logger)
+    redis_handler = await setup_redis(station_config, logger)
+    if not redis_handler:
+        return
+
+    data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+    redis_handler.set_data_handler(data_handler)
+
+    if await handle_cleanup(args, redis_handler, logger):
+        return
+
+    if await handle_display(args, data_handler, redis_handler, logger):
+        return
+
+    interface, meshtastic_handler = await setup_meshtastic(args.device, redis_handler, logger)
+    if not interface or not meshtastic_handler:
+        await redis_handler.close()
+        return
+
+    await run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger)
+
+def load_configuration(args, logger):
+    """Load the configuration."""
+    station_config = BaseStationConfig.load(path=args.config, logger=logger)
+    if args.redis_host:
+        station_config.redis.host = args.redis_host
+    if args.redis_port:
+        station_config.redis.port = args.redis_port
+    return station_config
+
+async def run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger):
+    """Run the appropriate UI."""
+    ui = create_ui(args.ui, data_handler, logger)
+    publisher_task = asyncio.create_task(redis_handler.message_publisher())
     try:
-        # Load configuration
-        station_config = BaseStationConfig.load(path=args.config, logger=logger)
-        if args.redis_host:
-            station_config.redis.host = args.redis_host
-        if args.redis_port:
-            station_config.redis.port = args.redis_port
-
-        # Initialize handlers
-        redis_handler = await setup_redis(args, station_config, logger)
-        if not redis_handler:
-            return
-
-        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-        redis_handler.set_data_handler(data_handler)
-
-        # Handle cleanup if requested
-        if await handle_cleanup(args, redis_handler, logger):
-            return
-
-        # Handle display-only modes
-        if await handle_display(args, data_handler, redis_handler, logger):
-            return
-
-        # Initialize Meshtastic
-        interface, meshtastic_handler = await setup_meshtastic(args, redis_handler, logger)
-        if not interface or not meshtastic_handler:
-            await redis_handler.close()
-            return
-
-        # Run in selected UI mode
-        if args.ui == "curses":
-            await monitor_mode(data_handler, meshtastic_handler, interface, redis_handler, logger)
-        elif args.ui == "dearpygui":
-            logger.error("DearPyGui interface not yet implemented")
-            return 1
-        else:  # "none" or basic console mode
-            await run_console(logger, interface, meshtastic_handler, redis_handler, data_handler)
-
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
-        return 1
+        await ui.run()
+    finally:
+        publisher_task.cancel()
+        try:
+            await publisher_task
+        except asyncio.CancelledError:
+            pass
+        meshtastic_handler.cleanup()
+        interface.close()
+        await redis_handler.close()
 
 if __name__ == "__main__":
     try:
