@@ -22,7 +22,6 @@ class Platform(Enum):
 def detect_platform() -> Platform:
     """Detect the current platform."""
     system = platform.system().lower()
-    machine = platform.machine().lower()
     
     if system == 'windows':
         return Platform.WINDOWS
