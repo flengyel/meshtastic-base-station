@@ -113,7 +113,9 @@ async def handle_display(args, data_handler, redis_handler, logger) -> bool:
 async def run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger):
     """Run the appropriate UI with proper terminal handling."""
     ui = None
+    publisher_task = None  # Initialize to None
     try:
+        # Create UI
         if args.ui == "curses":
             ui = await CursesUI.create(data_handler, logger)
         else:
