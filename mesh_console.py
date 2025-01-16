@@ -171,6 +171,82 @@ async def run_console(logger, interface, meshtastic_handler, redis_handler, data
 from src.station.ui.factory import create_ui
 from src.station.utils.platform_utils import detect_platform, Platform
 
+async def run_main(args, logger):
+    """Run the main logic of the application."""
+    try:
+        # Platform detection
+        platform = detect_platform()
+        logger.info(f"Running on platform: {platform.name}")
+
+        # Load configuration
+        station_config = load_configuration(args, logger)
+        
+        # Setup Redis
+        redis_handler = await setup_redis(station_config, logger)
+        if not redis_handler:
+            return
+
+        # Setup data handler
+        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+        redis_handler.set_data_handler(data_handler)
+
+        # Handle cleanup requests if any
+        if await handle_cleanup(args, redis_handler, logger):
+            return
+
+        # Handle display-only modes
+        if await handle_display(args, data_handler, redis_handler, logger):
+            return
+
+        # Setup Meshtastic interface
+        interface, meshtastic_handler = await setup_meshtastic(args.device, redis_handler, logger)
+        if not interface or not meshtastic_handler:
+            await redis_handler.close()
+            return
+
+        # Create UI
+        ui = create_ui(args.ui, data_handler, logger)
+        
+        # Create task group for concurrent operations
+        async with asyncio.TaskGroup() as tg:
+            # Start Redis message publisher
+            publisher_task = tg.create_task(
+                redis_handler.message_publisher()
+            )
+            
+            # Start UI
+            ui_task = tg.create_task(ui.run())
+            
+            try:
+                # Wait for either task to complete
+                _, pending = await asyncio.wait(
+                    [publisher_task, ui_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # Cancel remaining tasks
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                        
+            except asyncio.CancelledError:
+                logger.info("Received shutdown signal")
+                
+            finally:
+                # Cleanup
+                await ui.stop()
+                meshtastic_handler.cleanup()
+                interface.close()
+                await redis_handler.close()
+                logger.info("Cleanup completed")
+                
+    except Exception as e:
+        logger.error(f"Error in main application: {e}", exc_info=True)
+        return 1
+
 async def main():
     """Main application entry point."""
     args = parse_args()
@@ -184,35 +260,19 @@ async def main():
 
     try:
         await run_main(args, logger)
+    except KeyboardInterrupt:
+        logger.info("Program terminated by user")
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
 
-async def run_main(args, logger):
-    """Run the main logic of the application."""
-    platform = detect_platform()
-    logger.info(f"Running on platform: {platform.name}")
-
-    station_config = load_configuration(args, logger)
-    redis_handler = await setup_redis(station_config, logger)
-    if not redis_handler:
-        return
-
-    data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-    redis_handler.set_data_handler(data_handler)
-
-    if await handle_cleanup(args, redis_handler, logger):
-        return
-
-    if await handle_display(args, data_handler, redis_handler, logger):
-        return
-
-    interface, meshtastic_handler = await setup_meshtastic(args.device, redis_handler, logger)
-    if not interface or not meshtastic_handler:
-        await redis_handler.close()
-        return
-
-    await run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger)
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user.")
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
 
 def load_configuration(args, logger):
     """Load the station configuration."""
