@@ -1,0 +1,7 @@
+# requirements.txt
+meshtastic==2.5.9
+protobuf==5.29.2
+Pypubsub==4.0.3
+pyserial==3.5
+redis==5.2.1
+dearpygui==1.10.1  # For GUI interface

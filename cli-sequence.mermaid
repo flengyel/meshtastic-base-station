@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant U as User
+    participant AP as arg_parser.py
+    participant C as commands.py
+    participant D as display.py
+    participant R as Redis Handler
+    participant M as Meshtastic Handler
+
+    U->>AP: Input Command
+    AP->>AP: Parse Arguments
+    AP->>AP: Validate Options
+    AP->>C: Execute Command
+    
+    alt Monitor Command
+        C->>R: Initialize Redis
+        C->>M: Initialize Device
+        C->>D: Setup Display
+        loop Monitor Loop
+            M->>R: Store Data
+            R->>D: Update Display
+            D->>U: Show Status
+        end
+    else Show Command
+        C->>R: Fetch Data
+        C->>D: Format Data
+        D->>U: Display Results
+    else Cleanup Command
+        C->>R: Remove Old Data
+        R->>D: Format Results
+        D->>U: Show Summary
+    end

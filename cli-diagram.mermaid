@@ -1,0 +1,46 @@
+flowchart TB
+    subgraph User Input
+        CLI[Command Line Input]
+    end
+
+    subgraph "arg_parser.py"
+        AP[Argument Parser]
+        VAL[Validation]
+        NORM[Normalization]
+    end
+
+    subgraph "commands.py"
+        CMD[Command Registry]
+        DISP[Dispatch Logic]
+        subgraph Command Implementations
+            MON[Monitor Command]
+            SHOW[Show Command]
+            CLEAN[Cleanup Command]
+        end
+    end
+
+    subgraph "display.py"
+        FMT[Format Manager]
+        TAB[Table Formatter]
+        ERR[Error Handler]
+        PROG[Progress Display]
+    end
+
+    subgraph Data Layer
+        REDIS[Redis Handler]
+        MESH[Meshtastic Handler]
+        CONFIG[Configuration]
+    end
+
+    CLI --> AP
+    AP --> VAL
+    VAL --> NORM
+    NORM --> CMD
+    CMD --> DISP
+    DISP --> MON & SHOW & CLEAN
+    MON & SHOW & CLEAN --> FMT
+    FMT --> TAB & ERR & PROG
+    MON -.-> REDIS & MESH
+    SHOW -.-> REDIS
+    CLEAN -.-> REDIS
+    CONFIG -.-> MON & SHOW & CLEAN

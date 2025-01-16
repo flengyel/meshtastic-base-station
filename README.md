@@ -25,17 +25,18 @@ A Python-based base station for Meshtastic devices providing persistent storage 
   - Atomic operations for data consistency
   - Support for remote Redis servers
 
+- **Flexible UI Options:**
+  - Basic console output
+  - Terminal UI using curses
+  - Optional graphical interface using DearPyGui
+  - Real-time data visualization
+
 - **Flexible Configuration:**
   - YAML-based configuration files
   - Environment variable support
   - Command-line overrides
   - Platform-aware defaults
   - Remote Redis connectivity
-
-- **Flexible Logging:**
-  - Custom levels: PACKET, DATA, REDIS
-  - Multiple output formats and filtering
-  - Threshold or exact level matching
 
 ## Project Structure
 
@@ -44,6 +45,11 @@ meshtastic-base-station/
 ├── src/
 │   └── station/
 │       ├── __init__.py
+│       ├── cli/                   # Command-line interface components
+│       │   ├── __init__.py
+│       │   ├── arg_parser.py     # Command line argument parsing
+│       │   ├── display.py        # Console display formatting
+│       │   └── commands.py       # Command implementations
 │       ├── config/               # Configuration management
 │       │   ├── __init__.py
 │       │   └── base_config.py    # Core configuration classes
@@ -54,11 +60,17 @@ meshtastic-base-station/
 │       ├── types/
 │       │   ├── __init__.py
 │       │   └── meshtastic_types.py  # Type definitions
+│       ├── ui/
+│       │   ├── __init__.py
+│       │   ├── base.py          # Abstract UI base class
+│       │   ├── terminal_ui.py   # Curses-based UI
+│       │   └── dearpygui_ui.py  # DearPyGui UI
 │       └── utils/
 │           ├── __init__.py
-│           ├── logger.py         # Logging setup
-│           ├── log_filter.py     # Log filtering
-│           └── validation.py     # Type validation
+│           ├── constants.py  # Magic numbers & string defs
+│           ├── logger.py     # Logging setup
+│           ├── log_filter.py # Log filtering
+│           └── validation.py # Type validation
 ├── tests/
 │   ├── __init__.py
 │   └── test_*.py files
@@ -84,12 +96,12 @@ meshtastic-base-station/
 - Required packages:
 
 ```python
-redis-py-async
 meshtastic
-pyserial
-pypubsub
 protobuf
-pyyaml    # For configuration
+pypubsub
+pyserial
+redis
+dearpygui  # Optional - for graphical interface
 ```
 
 ## Installation
@@ -102,9 +114,11 @@ pyyaml    # For configuration
    ```
 
 2. Install dependencies:
-
+  
    ```bash
    pip install -r requirements.txt
+   # For graphical interface:
+   pip install dearpygui
    ```
 
 3. Start Redis:
@@ -113,140 +127,22 @@ pyyaml    # For configuration
    redis-server
    ```
 
-## Configuration
-
-### Configuration File (config.yaml)
-
-```yaml
-# Environment (development, testing, production)
-environment: development
-
-# Redis configuration
-redis:
-  host: localhost      # or remote host like pironman5.local
-  port: 6379
-  password: null       # Set if using authentication
-  db: 0
-  decode_responses: true
-
-# Device configuration
-device:
-  port: /dev/ttyACM0  # Linux default
-  # port: COM16       # Windows example
-  baud_rate: 115200
-  timeout: 1.0
-
-# Logging configuration
-log_cfg:
-  level: INFO
-  file: meshtastic.log
-  use_threshold: false
-  format: "%(asctime)s %(levelname)s:%(name)s:%(message)s"
-  debugging: false
-```
-
-### Configuration Sources
-
-The system uses a hierarchical configuration approach:
-
-1. Command line arguments (highest priority)
-2. Environment variables
-3. Configuration file (config.yaml)
-4. Default values (lowest priority)
-
-Configuration files are searched for in:
-
-1. Specified path (--config option)
-2. Current directory (./config.yaml)
-3. User config (~/.config/meshtastic/config.yaml)
-4. System config (/etc/meshtastic/config.yaml)
-
-### Environment Variables
-
-```bash
-export MESHTASTIC_REDIS_HOST=pironman5.local
-export MESHTASTIC_REDIS_PORT=6379
-export MESHTASTIC_REDIS_PASSWORD=secret
-export MESHTASTIC_DEVICE_PORT=COM3
-export MESHTASTIC_LOG_LEVEL=INFO
-```
-
-## Logging System
-
-### Log Levels
-
-The system supports both standard and custom log levels:
-
-Standard Levels:
-
-- DEBUG: Detailed debugging information
-- INFO: General operational information
-- WARNING: Warning messages
-- ERROR: Error conditions
-- CRITICAL: Critical errors that may prevent operation
-
-Custom Levels:
-
-- PACKET: Meshtastic packet traffic (level 15)
-- DATA: Telemetry data processing (level 16)
-- REDIS: Redis storage operations (level 17)
-
-### Logging Configuration
-
-Logging can be configured through:
-
-#### 1. Command line options
-  
-```bash  
---log INFO,PACKET           # Show specific levels  
---log DEBUG --threshold    # Show DEBUG and above  
---no-file-logging         # Console output only  
-```  
-  
-#### 2. Configuration files  
-  
-```yaml  
-log_cfg:  
-  level: INFO  
-  file: meshtastic.log
-  use_threshold: false
-  format: "%(asctime)s %(levelname)s:%(name)s:%(message)s"
-  debugging: false
-```  
-  
-#### 3. Environment variables  
-  
-```bash
-export MESHTASTIC_LOG_LEVEL=INFO,PACKET
-```
-
-### Log Output Examples
-
-Device Telemetry:
-
-```bash
-DEBUG:handlers.data_handler:Device telemetry from !f7f9e240: battery=101%, voltage=4.20V
-```
-
-Network Status:
-
-```bash
-DEBUG:handlers.data_handler:Network telemetry: 13/57 nodes online
-```
-
-Redis Operations:
-
-```bash
-REDIS:handlers.redis_handler:Loaded 47 items from meshtastic:nodes
-```
-
 ## Usage
 
 ### Basic Operation
 
 ```bash
-python mesh_console.py                      # Use default config
-python mesh_console.py --config custom.yaml # Use custom config
+# Basic console output
+python mesh_console.py
+
+# Terminal UI (curses)
+python mesh_console.py --ui curses
+
+# Graphical interface (if DearPyGui is installed)
+python mesh_console.py --ui dearpygui
+
+# Use custom config
+python mesh_console.py --config custom.yaml
 ```
 
 ### Command Line Options
@@ -255,14 +151,18 @@ python mesh_console.py --config custom.yaml # Use custom config
 usage: mesh_console.py [-h] [--config CONFIG] [--device DEVICE]
                       [--redis-host HOST] [--redis-port PORT]
                       [--log LOG] [--threshold] [--no-file-logging]
-                      [--display-redis] [--debugging]
+                      [--ui {none,curses,dearpygui}]
+                      [--display-redis] [--display-nodes]
+                      [--display-messages] [--display-telemetry]
 
 options:
   -h, --help       show this help message and exit
   --config CONFIG  Path to configuration file
-  --device DEVICE  Serial interface device (overrides config)
+  --device DEVICE  Serial interface device
   --redis-host HOST Redis host (overrides config)
   --redis-port PORT Redis port (overrides config)
+  --ui {none,curses,dearpygui}
+                   Select UI mode (default: none)
 
 Logging Options:
   --log LOG        Comma-separated list of log levels
@@ -270,8 +170,15 @@ Logging Options:
   --no-file-logging
                    Disable logging to file
 
-Other Options:
+Display Options:
   --display-redis  Display Redis data and exit
+  --display-nodes  Display only node information
+  --display-messages
+                   Display only messages
+  --display-telemetry
+                   Display only telemetry data
+
+Other Options:
   --debugging      Print diagnostic statements
 ```
 
@@ -295,30 +202,10 @@ Display stored data:
 python mesh_console.py --display-redis
 ```
 
-### Redis Data Structure
-
-```python
-meshtastic:messages               # Text messages
-meshtastic:nodes                 # Node information
-meshtastic:telemetry:device      # Device metrics
-meshtastic:telemetry:network     # Network statistics
-meshtastic:telemetry:environment # Environmental readings
-```
-
-Messages and telemetry are stored as JSON, preserving complete packet information for analysis and replay.
-
-### Redis CLI Examples
-
-View recent telemetry:
+Monitor with graphical interface:
 
 ```bash
-redis-cli -h pironman5.local LRANGE meshtastic:telemetry:device 0 10
-```
-
-Check node status:
-
-```bash
-redis-cli -h pironman5.local HGETALL meshtastic:nodes
+python mesh_console.py --ui dearpygui --log INFO
 ```
 
 ## Architecture
@@ -336,6 +223,24 @@ The project uses modern Python async patterns and Redis for efficient data handl
   - `redis_handler.py`: Async Redis operations
   - `data_handler.py`: Packet processing
 
+- **CLI System:**
+  - `arg_parser.py`: Argument parsing and validation
+  - `display.py`: Consistent output formatting
+  - `commands.py`: Individual command implementations
+  - Separation of concerns between parsing, display, and execution
+
+- **UI System:**
+  - Abstract base class defining UI interface
+  - Console output for basic operation
+  - Curses-based terminal UI
+  - Optional DearPyGui graphical interface
+
+- **Command Line Interface:**
+  - Modular command structure
+  - Argument parsing separated from command logic
+  - Consistent display formatting
+  - Composable command implementations
+
 - **Type System:**
   - TypedDict definitions for all packets
   - Runtime type validation
@@ -347,17 +252,7 @@ The project uses modern Python async patterns and Redis for efficient data handl
   3. JSON conversion
   4. Atomic Redis storage
   5. Persistent data retrieval
-
-## Future Development
-
-- Kivy-based GUI interface
-- RSSI visualization
-- Geographic tracking
-- Web interface integration
-- Enhanced configuration
-- Extended metrics
-- Data retention policies
-- Health monitoring system
+  6. UI updates
 
 ## Contributing
 
@@ -370,4 +265,5 @@ GNU General Public License v3.0 - see [GNU GPL v3.0](https://www.gnu.org/license
 ## Acknowledgments
 
 - [Meshtastic Project](https://meshtastic.org)
-- Contributors to the Meshtastic Python API
+- Contributors to the Meshtastic Python API  
+  

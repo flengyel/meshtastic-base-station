@@ -6,253 +6,78 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import argparse
 import asyncio
 import logging
-from meshtastic.serial_interface import SerialInterface
 import serial.tools.list_ports
-from src.station.utils.logger import configure_logger, get_available_levels
+from meshtastic.serial_interface import SerialInterface
+
+from src.station.cli.arg_parser import parse_args
+from src.station.cli.display import display_nodes, display_messages, display_telemetry
+from src.station.utils.logger import configure_logger
 from src.station.handlers.redis_handler import RedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
-from src.station.utils.constants import DisplayConst, DeviceConst, LoggingConst
+from src.station.utils.constants import LoggingConst
 from src.station.config.base_config import BaseStationConfig
 from src.station.handlers.meshtastic_handler import MeshtasticHandler
-from src.station.utils.constants import RedisConst
-import os
-
-os.environ["KIVY_NO_ARGS"] = "1" # Prevent Kivy from parsing command-line arguments
-os.environ["KIVY_NO_CONSOLELOG"] = "1" # Prevent Kivy from logging to console
-
-def parse_arguments():
-    """Parse command-line arguments with enhanced logging options."""
-    parser = argparse.ArgumentParser(
-        description="Meshtastic Console",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s --device /dev/ttyACM0                    # Use default INFO level
-  %(prog)s --log INFO,PACKET                        # Show INFO and PACKET messages
-  %(prog)s --log DEBUG --threshold                  # Show DEBUG and above
-  %(prog)s --log PACKET,REDIS --no-file-logging     # Show only PACKET and REDIS, console only
-  %(prog)s --gui                                    # Start in GUI mode
-        """
-    )
-
-    # Device configuration
-    parser.add_argument(
-        "--device",
-        type=str,
-        default=DeviceConst.DEFAULT_PORT_LINUX,
-        help=f"Serial interface device (default: {DeviceConst.DEFAULT_PORT_LINUX})"
-    )
-
-    # Logging configuration
-    log_group = parser.add_argument_group('Logging Options')
-    log_group.add_argument(
-        "--log",
-        type=str,
-        default=LoggingConst.DEFAULT_LEVEL,
-        help=f"Comma-separated list of log levels to include. Available levels: {', '.join(get_available_levels())}"
-    )
-    log_group.add_argument(
-        "--threshold",
-        action="store_true",
-        help="Treat log level as threshold"
-    )
-    log_group.add_argument(
-        "--no-file-logging",
-        action="store_true",
-        help="Disable logging to file"
-    )
-
-    # Other options
-    parser.add_argument(
-        "--display-redis",
-        action="store_true",
-        help="Display Redis data and exit"
-    )
-    parser.add_argument(
-        "--debugging",
-        action="store_true",
-        help="Print diagnostic debugging statements"
-    )
-
-    # Configuration
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to configuration file"
-    )
-
-    # Redis configuration
-    parser.add_argument(
-        "--redis-host",
-        type=str,
-        help="Redis host (overrides config)"
-    )
-    parser.add_argument(
-        "--redis-port",
-        type=int,
-        help="Redis port (overrides config)"
-    )
-
-    # GUI mode
-    parser.add_argument(
-        "--gui",
-        action="store_true",
-        help="Start in GUI mode using Kivy interface"
-    )
-
-    # Cleanup options
-    cleanup_group = parser.add_argument_group('Cleanup Options')
-    cleanup_group.add_argument(
-        "--cleanup-days",
-        type=int,
-        help="Remove data older than specified days"
-    )
-    cleanup_group.add_argument(
-        "--cleanup-corrupted",
-        action="store_true",
-        help="Remove corrupted data entries"
-    )
-
-    args = parser.parse_args()
-    args.log_levels = [level.strip() for level in args.log.split(",")]
-    return args
-
-async def display_stored_data(data_handler):
-    """Display previously stored data."""
-    await display_nodes(data_handler)
-    await display_messages(data_handler)
-    await display_device_telemetry(data_handler)
-    await display_network_telemetry(data_handler)
-
-async def display_nodes(data_handler):
-    """Display previously stored nodes."""
-    print("\n--- Previously Saved Nodes ---")  # Always print headers
-    data_handler.logger.debug("Attempting to retrieve formatted nodes...")
-    nodes = await data_handler.get_formatted_nodes()
-    data_handler.logger.debug(f"Retrieved {len(nodes) if nodes else 0} nodes")
-    if not nodes:
-        print("[No nodes found]")
-    else:
-        for node in sorted(nodes, key=lambda x: x['timestamp']):
-            print(f"[{node['timestamp']}] Node {node['id']}: {node['name']}")
-
-async def display_messages(data_handler):
-    """Display previously stored messages."""
-    print("\n--- Previously Saved Messages ---")
-    data_handler.logger.debug("Attempting to retrieve formatted messages...")
-    messages = await data_handler.get_formatted_messages()
-    data_handler.logger.debug(f"Retrieved {len(messages) if messages else 0} messages")
-    if not messages:
-        print("[No messages found]")
-    else:
-        for msg in sorted(messages, key=lambda x: x['timestamp']):
-            print(f"[{msg['timestamp']}] {msg['from']} -> {msg['to']}: {msg['text']}")
-
-async def display_device_telemetry(data_handler):
-    """Display previously stored device telemetry."""
-    print("\n--- Previously Saved Device Telemetry ---")
-    data_handler.logger.debug("Attempting to retrieve device telemetry...")
-    device_telemetry = await data_handler.get_formatted_device_telemetry()
-    data_handler.logger.debug(f"Retrieved {len(device_telemetry) if device_telemetry else 0} device telemetry records")
-    if not device_telemetry:
-        print("[No device telemetry found]")
-    else:
-        for tel in sorted(device_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_DEVICE_TELEMETRY:]:  # Last 10 entries
-            print(f"[{tel['timestamp']}] {tel['from_id']}: battery={tel['battery']}%, voltage={tel['voltage']}V")
-
-async def display_network_telemetry(data_handler):
-    """Display previously stored network telemetry."""
-    print("\n--- Previously Saved Network Telemetry ---")
-    data_handler.logger.debug("Attempting to retrieve network telemetry...")
-    network_telemetry = await data_handler.get_formatted_network_telemetry()
-    data_handler.logger.debug(f"Retrieved {len(network_telemetry) if network_telemetry else 0} network telemetry records")
-    if not network_telemetry:
-        print("[No network telemetry found]")
-    else:
-        for tel in sorted(network_telemetry, key=lambda x: x['timestamp'])[-DisplayConst.MAX_NETWORK_TELEMETRY:]:  # Last 5 entries
-            print(f"[{tel['timestamp']}] {tel['from_id']}: {tel['online_nodes']}/{tel['total_nodes']} nodes online")
+from src.station.ui.terminal_ui import TerminalUI
 
 def suggest_available_ports(logger: logging.Logger) -> None:
     """List available serial ports."""
     try:
-        logger.info("Available ports:")
         ports = list(serial.tools.list_ports.comports())
         if ports:
+            logger.info("Available serial ports:")
             for port in ports:
                 logger.info(f"  - {port.device}")
         else:
-            logger.info("  No serial ports detected.")
+            logger.info("  No serial ports detected")
     except Exception as e:
         logger.error(f"Cannot list available ports: {e}")
 
-async def main():
-    args = parse_arguments()
-    logger = configure_logger(
-        name=__name__,
-        log_levels=args.log_levels,
-        use_threshold=args.threshold,
-        log_file=None if args.no_file_logging else LoggingConst.DEFAULT_FILE,
-        debugging=args.debugging
-    )
-    station_config = load_station_config(args, logger)
-    redis_handler = await initialize_redis_handler(args, station_config, logger)
-    if not redis_handler:
-        return
-    data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
-    redis_handler.set_data_handler(data_handler)
-    if await handle_cleanup(args, redis_handler, logger):
-        return
-    if args.display_redis:
-        await display_redis_data(data_handler, redis_handler, logger)
-        return
-    await handle_serial_connection(args, redis_handler, data_handler, station_config, logger)
-
-def load_station_config(args, logger):
-    station_config = BaseStationConfig.load(path=args.config, logger=logger)
-    if args.redis_host:
-        station_config.redis.host = args.redis_host
-    if args.redis_port:
-        station_config.redis.port = args.redis_port
-    return station_config
-
-async def initialize_redis_handler(args, station_config, logger):
+async def setup_redis(args, station_config, logger) -> RedisHandler:
+    """Initialize Redis handler."""
     try:
-        if args.gui:
-            from src.station.ui.gui_redis_handler import GuiRedisHandler
-            redis_handler = GuiRedisHandler(
-                host=station_config.redis.host,
-                port=station_config.redis.port,
-                logger=logger
-            )
-        else:
-            redis_handler = RedisHandler(
-                host=station_config.redis.host,
-                port=station_config.redis.port,
-                logger=logger
-            )
+        redis_handler = RedisHandler(
+            host=station_config.redis.host,
+            port=station_config.redis.port,
+            logger=logger
+        )
         if not await redis_handler.verify_connection():
-            logger.error(f"Could not connect to Redis at {station_config.redis.host}:{station_config.redis.port}")
+            logger.error(
+                f"Could not connect to Redis at "
+                f"{station_config.redis.host}:{station_config.redis.port}"
+            )
             return None
+        return redis_handler
     except Exception as e:
-        logger.error(f"Unexpected error initializing Redis: {e}")
-        if args.debugging:
-            logger.debug("Initialization error details:", exc_info=True)
+        logger.error(f"Failed to initialize Redis: {e}")
         return None
-    return redis_handler
 
-async def handle_cleanup(args, redis_handler, logger):
+async def setup_meshtastic(args, redis_handler, logger) -> tuple:
+    """Initialize Meshtastic interface and handler."""
+    try:
+        interface = SerialInterface(args.device)
+        logger.debug(f"Connected to serial device: {args.device}")
+        
+        meshtastic_handler = MeshtasticHandler(
+            redis_handler=redis_handler,
+            interface=interface,
+            logger=logger
+        )
+        await meshtastic_handler.initialize_connected_node()
+        return interface, meshtastic_handler
+    except FileNotFoundError:
+        logger.error(f"Cannot connect to serial device {args.device}: Device not found")
+        suggest_available_ports(logger)
+        return None, None
+    except Exception as e:
+        logger.error(f"Cannot connect to serial device {args.device}: {e}")
+        suggest_available_ports(logger)
+        return None, None
+
+async def handle_cleanup(args, redis_handler, logger) -> bool:
+    """Handle cleanup operations if requested."""
     if args.cleanup_days or args.cleanup_corrupted:
         if args.cleanup_days:
             logger.info(f"Cleaning up data older than {args.cleanup_days} days...")
@@ -264,60 +89,59 @@ async def handle_cleanup(args, redis_handler, logger):
         return True
     return False
 
-async def display_redis_data(data_handler, redis_handler, logger):
-    logger.info("Displaying Redis data ...")
-    await display_stored_data(data_handler)
-    await redis_handler.close()
+async def handle_display(args, data_handler, redis_handler, logger) -> bool:
+    """Handle display-only modes."""
+    if args.display_redis or args.display_nodes or args.display_messages or args.display_telemetry:
+        if args.display_nodes:
+            await display_nodes(data_handler, logger)
+        elif args.display_messages:
+            await display_messages(data_handler, logger)
+        elif args.display_telemetry:
+            await display_telemetry(data_handler, logger)
+        else:  # display_redis shows everything
+            await display_nodes(data_handler, logger)
+            await display_messages(data_handler, logger)
+            await display_telemetry(data_handler, logger)
+        await redis_handler.close()
+        return True
+    return False
 
-async def handle_serial_connection(args, redis_handler, data_handler, station_config, logger):
+async def monitor_mode(data_handler, meshtastic_handler, interface, redis_handler, logger):
+    """Run in continuous monitoring mode with terminal UI."""
+    terminal = TerminalUI(data_handler, logger)
+    publisher_task = None
+    
     try:
-        interface = SerialInterface(args.device)
-        logger.debug(f"Connected to serial device: {args.device}, {interface}")
-        meshtastic_handler = MeshtasticHandler(
-            redis_handler=redis_handler,
-            interface=interface,
-            logger=logger
-        )
-        await meshtastic_handler.initialize_connected_node()
+        # Start Redis message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
-        logger.debug(f"Created publisher task: {publisher_task}")
-    except FileNotFoundError:
-        logger.error(f"Cannot connect to serial device {args.device}: Device not found.")
-        suggest_available_ports(logger)
-        await redis_handler.close()
-        return
+        
+        # Start terminal UI
+        await terminal.run()
+            
+    except KeyboardInterrupt:
+        logger.info("Monitoring stopped by user")
     except Exception as e:
-        logger.error(f"Cannot connect to serial device {args.device}: {e}")
-        suggest_available_ports(logger)
+        logger.error(f"Error in monitor mode: {e}")
+    finally:
+        if publisher_task:
+            publisher_task.cancel()
+            try:
+                await publisher_task
+            except asyncio.CancelledError:
+                pass
+        
+        meshtastic_handler.cleanup()
+        interface.close()
         await redis_handler.close()
-        return
-    if args.gui:
-        await start_gui(redis_handler, data_handler, logger, station_config, publisher_task)
-    else:
-        await start_cli(data_handler, logger, publisher_task, meshtastic_handler, interface, redis_handler)
+        logger.info("Cleanup completed")
 
-async def start_gui(redis_handler, data_handler, logger, station_config, publisher_task):
+async def run_console(logger, interface, meshtastic_handler, redis_handler, data_handler):
+    """Run in basic console mode."""
+    publisher_task = asyncio.create_task(redis_handler.message_publisher())
     try:
-        from src.station.ui.mvc_app import MeshtasticBaseApp
-        app = MeshtasticBaseApp(
-            redis_handler=redis_handler,
-            data_handler=data_handler,
-            logger=logger,
-            station_config=station_config
-        )
-        app._tasks.append(publisher_task)
-        await app.start()
-    except ImportError:
-        logger.error("GUI mode requires Kivy. Please install with: pip install kivy")
-        await redis_handler.close()
-    except Exception as e:
-        logger.error(f"Error starting GUI: {e}")
-        await redis_handler.close()
-
-async def start_cli(data_handler, logger, publisher_task, meshtastic_handler, interface, redis_handler):
-    await display_stored_data(data_handler)
-    logger.info("Listening for messages... Type Ctrl+C to exit.")
-    try:
+        await display_nodes(data_handler, logger)
+        await display_messages(data_handler, logger)
+        logger.info("Listening for messages... Press Ctrl+C to exit")
         await publisher_task
     except KeyboardInterrupt:
         logger.info("Shutdown initiated...")
@@ -326,10 +150,68 @@ async def start_cli(data_handler, logger, publisher_task, meshtastic_handler, in
         meshtastic_handler.cleanup()
         interface.close()
         await redis_handler.close()
-        logger.info("Interface closed.")
+        logger.info("Interface closed")
+
+async def main():
+    """Main application entry point."""
+    args = parse_args()
+    
+    # Configure logging
+    logger = configure_logger(
+        name=__name__,
+        log_levels=args.log_levels,
+        use_threshold=args.threshold,
+        log_file=None if args.no_file_logging else LoggingConst.DEFAULT_FILE,
+        debugging=args.debugging
+    )
+
+    try:
+        # Load configuration
+        station_config = BaseStationConfig.load(path=args.config, logger=logger)
+        if args.redis_host:
+            station_config.redis.host = args.redis_host
+        if args.redis_port:
+            station_config.redis.port = args.redis_port
+
+        # Initialize handlers
+        redis_handler = await setup_redis(args, station_config, logger)
+        if not redis_handler:
+            return
+
+        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+        redis_handler.set_data_handler(data_handler)
+
+        # Handle cleanup if requested
+        if await handle_cleanup(args, redis_handler, logger):
+            return
+
+        # Handle display-only modes
+        if await handle_display(args, data_handler, redis_handler, logger):
+            return
+
+        # Initialize Meshtastic
+        interface, meshtastic_handler = await setup_meshtastic(args, redis_handler, logger)
+        if not interface or not meshtastic_handler:
+            await redis_handler.close()
+            return
+
+        # Run in selected UI mode
+        if args.ui == "curses":
+            await monitor_mode(data_handler, meshtastic_handler, interface, redis_handler, logger)
+        elif args.ui == "dearpygui":
+            logger.error("DearPyGui interface not yet implemented")
+            return 1
+        else:  # "none" or basic console mode
+            await run_console(logger, interface, meshtastic_handler, redis_handler, data_handler)
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return 1
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Program terminated.")
+        print("\nProgram terminated by user.")
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
