@@ -266,14 +266,6 @@ async def main():
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nProgram terminated by user.")
-    except Exception as e:
-        print(f"\nUnexpected error: {e}")
-
 def load_configuration(args, logger):
     """Load the station configuration."""
     station_config = BaseStationConfig.load(path=args.config, logger=logger)
