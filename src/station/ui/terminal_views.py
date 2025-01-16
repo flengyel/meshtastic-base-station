@@ -9,6 +9,13 @@ from src.station.utils.constants import DisplayConst
 class CursesViews:
     """View implementations for the curses-based UI."""
 
+    def __init__(self):
+        """Initialize the views class."""
+        self.screen = None  # Will be set by CursesUI
+        self.max_lines = 0  # Will be set by CursesUI
+        self.max_cols = 0   # Will be set by CursesUI
+        self.logger = None  # Will be set by CursesUI
+
     async def refresh_nodes(self, nodes: List[Dict[str, Any]]) -> None:
         """Refresh the nodes display."""
         try:

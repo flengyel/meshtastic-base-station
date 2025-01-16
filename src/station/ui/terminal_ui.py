@@ -1,3 +1,4 @@
+
 # terminal_ui.py
 
 import curses
@@ -10,17 +11,18 @@ from src.station.ui.base import MeshtasticUI
 from src.station.ui.terminal_views import CursesViews
 from src.station.utils.constants import DisplayConst
 
-class CursesUI(MeshtasticUI, CursesViews):
+class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
     """Terminal-based user interface using curses."""
     
     def __init__(self, data_handler, logger: Optional[logging.Logger] = None):
-        super().__init__(data_handler, logger)
+        MeshtasticUI.__init__(self, data_handler, logger)  # Explicit parent class initialization
+        CursesViews.__init__(self)  # Initialize both parent classes
         self.screen = None
         self.current_view = 'nodes'  # Default view
         self.views = ['nodes', 'messages', 'device', 'network', 'environment']
         self.max_lines = 0
         self.max_cols = 0
-        
+
     async def start(self) -> None:
         """Initialize and start the curses UI."""
         try:
