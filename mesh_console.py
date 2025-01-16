@@ -152,6 +152,9 @@ async def run_console(logger, interface, meshtastic_handler, redis_handler, data
         await redis_handler.close()
         logger.info("Interface closed")
 
+from src.station.ui.factory import create_ui
+from src.station.utils.platform_utils import detect_platform, Platform
+
 async def main():
     """Main application entry point."""
     args = parse_args()
@@ -164,6 +167,62 @@ async def main():
         log_file=None if args.no_file_logging else LoggingConst.DEFAULT_FILE,
         debugging=args.debugging
     )
+
+    try:
+        # Log platform information
+        platform = detect_platform()
+        logger.info(f"Running on platform: {platform.name}")
+
+        # Load configuration
+        station_config = BaseStationConfig.load(path=args.config, logger=logger)
+        if args.redis_host:
+            station_config.redis.host = args.redis_host
+        if args.redis_port:
+            station_config.redis.port = args.redis_port
+
+        # Initialize handlers
+        redis_handler = await setup_redis(args, station_config, logger)
+        if not redis_handler:
+            return
+
+        data_handler = MeshtasticDataHandler(redis_handler, logger=logger)
+        redis_handler.set_data_handler(data_handler)
+
+        # Handle cleanup if requested
+        if await handle_cleanup(args, redis_handler, logger):
+            return
+
+        # Handle display-only modes
+        if await handle_display(args, data_handler, redis_handler, logger):
+            return
+
+        # Initialize Meshtastic
+        interface, meshtastic_handler = await setup_meshtastic(args, redis_handler, logger)
+        if not interface or not meshtastic_handler:
+            await redis_handler.close()
+            return
+
+        # Create appropriate UI
+        ui = create_ui(args.ui, data_handler, logger)
+        
+        # Start publisher task
+        publisher_task = asyncio.create_task(redis_handler.message_publisher())
+        
+        try:
+            await ui.run()
+        finally:
+            publisher_task.cancel()
+            try:
+                await publisher_task
+            except asyncio.CancelledError:
+                pass
+            meshtastic_handler.cleanup()
+            interface.close()
+            await redis_handler.close()
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return 1
 
     try:
         # Load configuration

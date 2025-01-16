@@ -59,14 +59,24 @@ def _add_logging_args(parser: argparse.ArgumentParser) -> None:
         help="Disable logging to file"
     )
 
+from src.station.utils.platform_utils import UIType, get_available_uis, get_default_ui
+
 def _add_mode_args(parser: argparse.ArgumentParser) -> None:
     """Add operating mode arguments."""
     mode_group = parser.add_argument_group('Operating Modes')
+    
+    # Get available UI types for this platform
+    available_uis = get_available_uis()
+    default_ui = get_default_ui()
+    
+    # Create list of UI choices
+    ui_choices = [ui.name.lower() for ui in available_uis]
+    
     mode_group.add_argument(
         "--ui",
-        choices=["none", "curses", "dearpygui"],
-        default="none",
-        help="Select UI mode (default: none for basic console output)"
+        choices=ui_choices,
+        default=default_ui.name.lower(),
+        help=f"Select UI mode (default: {default_ui.name.lower()})"
     )
     mode_group.add_argument(
         "--display-redis",
