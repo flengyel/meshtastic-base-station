@@ -119,13 +119,13 @@ async def handle_display(args, data_handler, redis_handler, logger) -> bool:
 
 async def monitor_mode(data_handler, meshtastic_handler, interface, redis_handler, logger):
     """Run in continuous monitoring mode with terminal UI."""
-    # Create UI using factory with curses interface
     ui = create_ui("curses", data_handler, logger)
-    publisher_task = None
+    tasks = []
     
     try:
         # Start Redis message publisher
         publisher_task = asyncio.create_task(redis_handler.message_publisher())
+        tasks.append(publisher_task)
         
         # Start UI
         await ui.run()
@@ -135,13 +135,17 @@ async def monitor_mode(data_handler, meshtastic_handler, interface, redis_handle
     except Exception as e:
         logger.error(f"Error in monitor mode: {e}")
     finally:
-        if publisher_task:
-            publisher_task.cancel()
-            try:
-                await publisher_task
-            except asyncio.CancelledError:
-                pass
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         
+        # Clean up resources
+        await ui.stop()
         meshtastic_handler.cleanup()
         interface.close()
         await redis_handler.close()
@@ -179,12 +183,12 @@ async def main():
     )
 
     try:
-        await run_main_logic(args, logger)
+        await run_main(args, logger)
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
 
-async def run_main_logic(args, logger):
+async def run_main(args, logger):
     """Run the main logic of the application."""
     platform = detect_platform()
     logger.info(f"Running on platform: {platform.name}")
@@ -211,7 +215,7 @@ async def run_main_logic(args, logger):
     await run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger)
 
 def load_configuration(args, logger):
-    """Load the configuration."""
+    """Load the station configuration."""
     station_config = BaseStationConfig.load(path=args.config, logger=logger)
     if args.redis_host:
         station_config.redis.host = args.redis_host
@@ -220,7 +224,7 @@ def load_configuration(args, logger):
     return station_config
 
 async def run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger):
-    """Run the appropriate UI."""
+    """Run the appropriate UI based on the arguments."""
     ui = create_ui(args.ui, data_handler, logger)
     publisher_task = asyncio.create_task(redis_handler.message_publisher())
     try:

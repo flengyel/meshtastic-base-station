@@ -1,4 +1,3 @@
-
 # terminal_ui.py
 
 import curses
@@ -22,7 +21,7 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
         self.views = ['nodes', 'messages', 'device', 'network', 'environment']
         self.max_lines = 0
         self.max_cols = 0
-
+        
     async def start(self) -> None:
         """Initialize and start the curses UI."""
         try:
