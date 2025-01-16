@@ -276,21 +276,39 @@ def load_configuration(args, logger):
     return station_config
 
 async def run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger):
-    """Run the appropriate UI based on the arguments."""
-    ui = create_ui(args.ui, data_handler, logger)
-    publisher_task = asyncio.create_task(redis_handler.message_publisher())
+    """Run the appropriate UI with proper terminal handling."""
+    ui = None
     try:
+        if args.ui == "curses":
+            ui = await CursesUI.create(data_handler, logger)
+        else:
+            ui = create_ui(args.ui, data_handler, logger)
+            await ui.start()
+
+        # Create message publisher task
+        publisher_task = asyncio.create_task(redis_handler.message_publisher())
+        
+        # Run UI
         await ui.run()
+        
+    except Exception as e:
+        logger.error(f"Error running UI: {e}", exc_info=True)
     finally:
-        publisher_task.cancel()
-        try:
-            await publisher_task
-        except asyncio.CancelledError:
-            pass
+        # Cancel publisher task
+        if publisher_task:
+            publisher_task.cancel()
+            try:
+                await publisher_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Cleanup
+        if ui:
+            await ui.stop()
         meshtastic_handler.cleanup()
         interface.close()
         await redis_handler.close()
-
+        
 if __name__ == "__main__":
     try:
         asyncio.run(main())

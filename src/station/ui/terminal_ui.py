@@ -5,22 +5,73 @@ import asyncio
 import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime
-
 from src.station.ui.base import MeshtasticUI
-from src.station.ui.terminal_views import CursesViews
 from src.station.utils.constants import DisplayConst
 
-class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
+class CursesUI(MeshtasticUI):
     """Terminal-based user interface using curses."""
     
     def __init__(self, data_handler, logger: Optional[logging.Logger] = None):
-        MeshtasticUI.__init__(self, data_handler, logger)  # Explicit parent class initialization
-        CursesViews.__init__(self)  # Initialize both parent classes
+        super().__init__(data_handler, logger)
         self.screen = None
-        self.current_view = 'nodes'  # Default view
+        self.current_view = 'nodes'
         self.views = ['nodes', 'messages', 'device', 'network', 'environment']
         self.max_lines = 0
         self.max_cols = 0
+
+    @classmethod
+    async def create(cls, data_handler, logger=None):
+        """Factory method to create UI instance using curses wrapper."""
+        instance = cls(data_handler, logger)
+        instance.screen = curses.initscr()
+        
+        # Initialize curses settings
+        curses.start_color()
+        curses.noecho()
+        curses.cbreak()
+        instance.screen.keypad(True)
+        instance.screen.nodelay(1)  # Non-blocking input
+        
+        # Initialize color pairs
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
+        
+        instance.max_lines, instance.max_cols = instance.screen.getmaxyx()
+        
+        # Load initial data
+        await instance.load_initial_data()
+        
+        return instance
+
+    async def cleanup(self):
+        """Clean up curses settings."""
+        if self.screen:
+            self.screen.keypad(False)
+            curses.nocbreak()
+            curses.echo()
+            curses.endwin()
+
+    async def run(self):
+        """Main UI loop with proper curses cleanup."""
+        try:
+            self.running = True
+            while self.running:
+                try:
+                    self.handle_input()
+                    await self.update()
+                    await asyncio.sleep(0.1)
+                except curses.error as e:
+                    self.logger.error(f"Curses error: {e}")
+                    self.running = False
+                except Exception as e:
+                    self.logger.error(f"Error in UI loop: {e}")
+                    self.running = False
+        finally:
+            await self.cleanup()
+
+
         
     async def start(self) -> None:
         """Initialize and start the curses UI."""
@@ -83,28 +134,6 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
             self.logger.error(f"Error handling input: {e}")
             self.running = False  # Exit on error
 
-    async def run(self) -> None:
-        """Main UI loop."""
-        try:
-            await self.start()
-            self.running = True
-
-            while self.running:
-                try:
-                    self.handle_input()  # Check for 'q' key to exit
-                    await self.update()
-                    await asyncio.sleep(0.1)  # Prevent CPU thrashing
-                except curses.error as e:
-                    self.logger.error(f"Curses error: {e}")
-                    self.running = False
-                except Exception as e:
-                    self.logger.error(f"Error in UI loop: {e}")
-                    self.running = False
-
-        except Exception as e:
-            self.logger.error(f"Error running UI: {e}", exc_info=True)
-        finally:
-            await self.stop()
 
     async def update(self) -> None:
         """Update the UI with latest data."""
