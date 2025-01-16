@@ -18,19 +18,104 @@ from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 
+
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
                  data_handler: MeshtasticDataHandler,
                  logger=None, 
-                 station_config : BaseStationConfig = None):
+                 station_config: BaseStationConfig = None):
         super().__init__()
         self.redis_handler = redis_handler
         self.data_handler = data_handler
         self.logger = logger or logging.getLogger(__name__)
-        self.station_config = station_config # avoid shadowing the built-in 'config' attribute
+        self.station_config = station_config
         self._running = False
         self._tasks = []
         self.views = {}
+        self.async_loop = None
+        self._async_callbacks = []
+
+    def _async_step(self, dt):
+        """Run one iteration of the asyncio event loop."""
+        try:
+            self.async_loop.stop()
+            self.async_loop.run_forever()
+        except Exception as e:
+            self.logger.error(f"Error in async step: {e}")
+
+    def build(self):
+        """Build the UI and set up asyncio integration."""
+        self.logger.debug("Starting build()")
+        
+        # Get the current event loop or create a new one
+        self.async_loop = asyncio.get_event_loop()
+        
+        # Schedule the asyncio loop to run regularly
+        Clock.schedule_interval(self._async_step, 0)
+        
+        # Build the UI
+        self.root = BoxLayout(orientation='vertical')
+        tabs = TabbedPanel(do_default_tab=False)
+        
+        self.views = {
+            'messages': MessagesView(station_config=self.station_config),
+            'nodes': NodesView(station_config=self.station_config),
+            'device_telemetry': DeviceTelemetryView(station_config=self.station_config),
+            'network_telemetry': NetworkTelemetryView(station_config=self.station_config),
+            'environment_telemetry': EnvironmentTelemetryView(station_config=self.station_config)
+        }
+
+        for name, view in self.views.items():
+            tab = TabbedPanelItem(text=name.replace('_', ' ').title())
+            tab.add_widget(view)
+            tabs.add_widget(tab)
+
+        self.root.add_widget(tabs)
+        return self.root
+
+    async def start(self):
+        """Start the application and its tasks."""
+        try:
+            self._running = True
+            self.logger.info("Starting Meshtastic Base Station GUI")
+            
+            # Load initial data
+            await self.load_initial_data()
+            
+            # Create tasks
+            gui_task = asyncio.create_task(self.process_gui_messages())
+            publisher_task = asyncio.create_task(self.redis_handler.message_publisher())
+            
+            # Track tasks
+            self._tasks.extend([gui_task, publisher_task])
+            
+            # Run Kivy app (this will integrate with asyncio via _async_step)
+            self.run()
+            
+        except Exception as e:
+            self.logger.error(f"Error starting GUI: {e}")
+            raise
+        finally:
+            await self.cleanup()
+
+    async def cleanup(self):
+        """Clean up tasks and stop the app."""
+        self._running = False
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        await self.redis_handler.cleanup()
+
+    def on_stop(self):
+        """Handle Kivy app stop."""
+        self._running = False
+        self.async_loop.stop()
+        super().on_stop()
+
 
     async def load_initial_data(self):
         """Load and display stored data when GUI starts."""
@@ -58,35 +143,6 @@ class MeshtasticBaseApp(App):
             self.logger.info("Initial data loaded")
         except Exception as e:
             self.logger.error(f"Error loading initial data: {e}")
-
-    def build(self):
-        self.logger.debug("Starting build()")
-        self.root = BoxLayout(orientation='vertical')
-        self.logger.debug("Created root BoxLayout")
-    
-        tabs = TabbedPanel(do_default_tab=False)
-        self.logger.debug("Created TabbedPanel")
-
-        self.views = {
-        'messages': MessagesView(station_config=self.station_config),
-        'nodes': NodesView(station_config=self.station_config),
-        'device_telemetry': DeviceTelemetryView(station_config=self.station_config),
-        'network_telemetry': NetworkTelemetryView(station_config=self.station_config),
-        'environment_telemetry': EnvironmentTelemetryView(station_config=self.station_config)
-        }        
-        self.logger.debug("Created views")
-
-        for name, view in self.views.items():
-            tab = TabbedPanelItem(text=name.replace('_', ' ').title())
-            self.logger.debug(f"Created tab for {name}")
-            tab.add_widget(view)
-            self.logger.debug(f"Added view to tab for {name}")
-            tabs.add_widget(tab)
-            self.logger.debug(f"Added tab to TabbedPanel for {name}")
-
-        self.root.add_widget(tabs)
-        self.logger.debug("Added TabbedPanel to root")
-        return self.root    
 
     async def gui_heartbeat(self):
         """Monitor GUI queue."""
@@ -195,37 +251,6 @@ class MeshtasticBaseApp(App):
             return "environment"
         return None
 
-    async def start(self):
-        try:
-            self._running = True
-            self.logger.info("Starting Meshtastic Base Station GUI")
-
-            # We don't need to call build() here anymore as Kivy will do it
-            self.logger.debug("Starting Kivy application")
-            await self.app_func()
-        except Exception as e:
-            self.logger.error(f"Error starting GUI: {e}")
-            raise
-        finally:
-            await self.cleanup()
-
-    async def cleanup(self):
-        self._running = False
-        for task in self._tasks:
-            if not task.done():
-                task.cancel()
-        await self.redis_handler.cleanup()
-
-    async def _run_kivy(self):
-        """Run the Kivy event loop."""
-        try:
-            self.logger.debug("Starting Kivy mainloop")
-            # Run Kivy mainloop
-            self.run()
-            self.logger.debug("Kivy mainloop ended")
-        except Exception as e:
-            self.logger.error(f"Error in Kivy mainloop: {str(e)}", exc_info=True)
-            raise
 
 
 class MessagesView(BoxLayout):
