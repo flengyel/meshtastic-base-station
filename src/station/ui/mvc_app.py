@@ -18,7 +18,6 @@ from src.station.ui.gui_redis_handler import GuiRedisHandler
 from src.station.handlers.data_handler import MeshtasticDataHandler
 from src.station.config.base_config import BaseStationConfig
 
-
 class MeshtasticBaseApp(App):
     def __init__(self, redis_handler: GuiRedisHandler,
                  data_handler: MeshtasticDataHandler,
@@ -32,27 +31,15 @@ class MeshtasticBaseApp(App):
         self._running = False
         self._tasks = []
         self.views = {}
-        self.async_loop = None
-        self._async_callbacks = []
 
-    def _async_step(self, dt):
-        """Run one iteration of the asyncio event loop."""
-        try:
-            self.async_loop.stop()
-            self.async_loop.run_forever()
-        except Exception as e:
-            self.logger.error(f"Error in async step: {e}")
+    async def _process_async_events(self, _):
+        """Process a single iteration of async events."""
+        await asyncio.sleep(0)
 
     def build(self):
         """Build the UI and set up asyncio integration."""
         self.logger.debug("Starting build()")
-        
-        # Get the current event loop or create a new one
-        self.async_loop = asyncio.get_event_loop()
-        
-        # Schedule the asyncio loop to run regularly
-        Clock.schedule_interval(self._async_step, 0)
-        
+
         # Build the UI
         self.root = BoxLayout(orientation='vertical')
         tabs = TabbedPanel(do_default_tab=False)
@@ -71,6 +58,12 @@ class MeshtasticBaseApp(App):
             tabs.add_widget(tab)
 
         self.root.add_widget(tabs)
+        
+        # Schedule asyncio event processing
+        Clock.schedule_interval(lambda dt: asyncio.get_event_loop().call_soon(
+            lambda: asyncio.create_task(self._process_async_events(dt))
+        ), 0)
+        
         return self.root
 
     async def start(self):
@@ -89,7 +82,7 @@ class MeshtasticBaseApp(App):
             # Track tasks
             self._tasks.extend([gui_task, publisher_task])
             
-            # Run Kivy app (this will integrate with asyncio via _async_step)
+            # Run Kivy app
             self.run()
             
         except Exception as e:
@@ -113,9 +106,7 @@ class MeshtasticBaseApp(App):
     def on_stop(self):
         """Handle Kivy app stop."""
         self._running = False
-        self.async_loop.stop()
         super().on_stop()
-
 
     async def load_initial_data(self):
         """Load and display stored data when GUI starts."""
