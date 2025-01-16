@@ -7,12 +7,13 @@ from typing import Optional
 from src.station.ui.base import MeshtasticUI
 from src.station.ui.terminal_views import CursesViews
 
-class CursesUI(MeshtasticUI, CursesViews):
+class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
     """Terminal-based user interface using curses."""
     
     def __init__(self, data_handler, logger: Optional[logging.Logger] = None):
-        MeshtasticUI.__init__(self, data_handler, logger)
+        # Order matters! Initialize CursesViews first
         CursesViews.__init__(self)
+        MeshtasticUI.__init__(self, data_handler, logger)
         self.screen = None
         self.current_view = 'nodes'
         self.views = ['nodes', 'messages', 'device', 'network', 'environment']
