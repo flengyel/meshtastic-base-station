@@ -72,12 +72,22 @@ def _add_mode_args(parser: argparse.ArgumentParser) -> None:
     # Create list of UI choices
     ui_choices = [ui.name.lower() for ui in available_uis]
     
+    # Add main mode argument
+    mode_group.add_argument(
+        '--mode',
+        choices=['display', 'interactive'],
+        default='interactive',
+        help='Run in display-only or interactive mode'
+    )
+
     mode_group.add_argument(
         "--ui",
         choices=ui_choices,
         default=default_ui.name.lower(),
         help=f"Select UI mode (default: {default_ui.name.lower()})"
     )
+    
+    # Display options
     mode_group.add_argument(
         "--display-redis",
         action="store_true",

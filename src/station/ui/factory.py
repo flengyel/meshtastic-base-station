@@ -7,8 +7,12 @@ from src.station.ui.terminal_ui import CursesUI
 from src.station.utils.platform_utils import UIType, check_ui_availability
 
 class ConsoleUI(MeshtasticUI):
-    """Basic console output UI."""
+    """Basic console output UI - only for non-curses display modes."""
     
+    def __init__(self, data_handler, logger: Optional[logging.Logger] = None):
+        super().__init__(data_handler, logger)
+        self.logger = logger or logging.getLogger(__name__)
+
     async def start(self):
         self.running = True
         self.logger.info("Started console UI")
@@ -21,39 +25,33 @@ class ConsoleUI(MeshtasticUI):
         pass  # Console UI doesn't handle input
 
     async def update(self):
-        pass  # Console UI updates through direct print statements
+        pass  # Console UI updates through logging
 
     async def refresh_nodes(self, nodes):
-        # Basic console output implementation
-        print("\nNodes:")
         for node in nodes:
-            print(f"{node['timestamp']}: {node['id']} - {node['name']}")
+            self.logger.info(f"{node['timestamp']}: {node['id']} - {node['name']}")
 
     async def refresh_messages(self, messages):
-        print("\nMessages:")
         for msg in messages:
-            print(f"{msg['timestamp']}: {msg['from']} -> {msg['to']}: {msg['text']}")
+            self.logger.info(f"{msg['timestamp']}: {msg['from']} -> {msg['to']}: {msg['text']}")
 
     async def refresh_device_telemetry(self, telemetry):
-        print("\nDevice Telemetry:")
         for entry in telemetry:
-            print(f"{entry['timestamp']}: {entry['from_id']} - Battery: {entry['battery']}%")
+            self.logger.info(f"{entry['timestamp']}: {entry['from_id']} - Battery: {entry['battery']}%")
 
     async def refresh_network_telemetry(self, telemetry):
-        print("\nNetwork Telemetry:")
         for entry in telemetry:
-            print(f"{entry['timestamp']}: {entry['online_nodes']}/{entry['total_nodes']} nodes")
+            self.logger.info(f"{entry['timestamp']}: {entry['online_nodes']}/{entry['total_nodes']} nodes")
 
     async def refresh_environment_telemetry(self, telemetry):
-        print("\nEnvironment Telemetry:")
         for entry in telemetry:
-            print(f"{entry['timestamp']}: {entry['temperature']}, {entry['humidity']}")
+            self.logger.info(f"{entry['timestamp']}: {entry['temperature']}, {entry['humidity']}")
 
     async def show_error(self, message):
-        print(f"\nError: {message}")
+        self.logger.error(message)
 
     async def show_status(self, message):
-        print(f"\nStatus: {message}")
+        self.logger.info(message)
 
 def create_ui(ui_type: str, 
              data_handler, 

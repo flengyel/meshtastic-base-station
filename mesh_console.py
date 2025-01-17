@@ -178,17 +178,34 @@ async def run_main(args, logger):
         if await handle_cleanup(args, redis_handler, logger):
             return
 
-        # Handle display-only modes
-        if await handle_display(args, data_handler, redis_handler, logger):
+        # Determine mode
+        is_display_mode = (args.mode == 'display' or 
+                         args.display_redis or 
+                         args.display_nodes or 
+                         args.display_messages or 
+                         args.display_telemetry)
+
+        if is_display_mode:
+            if args.display_nodes:
+                await display_nodes(data_handler, logger)
+            elif args.display_messages:
+                await display_messages(data_handler, logger)
+            elif args.display_telemetry:
+                await display_telemetry(data_handler, logger)
+            else:  # display_redis shows everything
+                await display_nodes(data_handler, logger)
+                await display_messages(data_handler, logger)
+                await display_telemetry(data_handler, logger)
+            await redis_handler.close()
             return
 
-        # Setup Meshtastic interface
+        # Interactive mode - setup Meshtastic and UI
         interface, meshtastic_handler = await setup_meshtastic(args.device, redis_handler, logger)
         if not interface or not meshtastic_handler:
             await redis_handler.close()
             return
-
-        # Run UI
+   
+        # Run the UI
         await run_ui(args, data_handler, redis_handler, interface, meshtastic_handler, logger)
                 
     except Exception as e:
