@@ -28,23 +28,31 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
     async def create(cls, data_handler, logger=None):
         """Factory method to create UI instance using curses wrapper."""
         instance = cls(data_handler, logger)
+    
+        # Save current stdout/stderr handlers
+        instance._old_stdout = logging.root.handlers[:]
+    
+        # Remove all handlers temporarily
+        logging.root.handlers = []
+    
+        # Initialize curses screen
         instance.screen = curses.initscr()
-        
+    
         # Initialize curses settings
         curses.start_color()
         curses.noecho()
         curses.cbreak()
         instance.screen.keypad(True)
         instance.screen.nodelay(1)  # Non-blocking input
-        
+    
         # Initialize color pairs
         curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
         curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
-        
+    
         instance.max_lines, instance.max_cols = instance.screen.getmaxyx()
-        
+    
         return instance
 
     async def start(self) -> None:
@@ -64,6 +72,9 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
             curses.nocbreak()
             curses.echo()
             curses.endwin()
+        
+        # Restore logging handlers
+        logging.root.handlers = self._old_stdout
 
     def handle_input(self):
         """Handle keyboard input."""
@@ -154,4 +165,3 @@ class CursesUI(CursesViews, MeshtasticUI):  # Changed order of inheritance
                     self.running = False
         finally:
             await self.stop()
-            
